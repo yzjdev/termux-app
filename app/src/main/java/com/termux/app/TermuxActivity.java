@@ -574,7 +574,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setNewSessionButtonView() {
-        setNewSessionButtonClickListeners(findViewById(R.id.new_session_button));
         setNewSessionButtonClickListeners(findViewById(R.id.new_tab_session_button));
     }
 
