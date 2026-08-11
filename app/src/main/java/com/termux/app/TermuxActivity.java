@@ -21,8 +21,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.Button;
 import android.widget.ImageButton;
-import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
@@ -64,6 +64,8 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
+
+import com.google.android.material.tabs.TabLayout;
 
 import java.util.Arrays;
 
@@ -249,8 +251,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setNewSessionButtonView();
 
-        setToggleKeyboardView();
-
         registerForContextMenu(mTerminalView);
 
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
@@ -427,6 +427,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+
+        // A session may have already been created synchronously above (by the
+        // setupBootstrapIfNeeded() callback or the ACTION_RUN shortcut branch) before the
+        // client was set, so the notify inside createTermuxSession() was skipped. Refresh
+        // the sessions list view now to make sure the tabs are up to date.
+        termuxSessionListNotifyUpdated();
     }
 
     @Override
@@ -498,11 +504,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setTermuxSessionsListView() {
-        ListView termuxSessionsListView = findViewById(R.id.terminal_sessions_list);
-        mTermuxSessionListViewController = new TermuxSessionsListViewController(this, mTermuxService.getTermuxSessions());
-        termuxSessionsListView.setAdapter(mTermuxSessionListViewController);
-        termuxSessionsListView.setOnItemClickListener(mTermuxSessionListViewController);
-        termuxSessionsListView.setOnItemLongClickListener(mTermuxSessionListViewController);
+        TabLayout termuxSessionsTabLayout = findViewById(R.id.terminal_sessions_tab_layout);
+        mTermuxSessionListViewController = new TermuxSessionsListViewController(this, termuxSessionsTabLayout, mTermuxService.getTermuxSessions());
     }
 
 
@@ -571,7 +574,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setNewSessionButtonView() {
-        View newSessionButton = findViewById(R.id.new_session_button);
+        setNewSessionButtonClickListeners(findViewById(R.id.new_session_button));
+        setNewSessionButtonClickListeners(findViewById(R.id.new_tab_session_button));
+    }
+
+    private void setNewSessionButtonClickListeners(View newSessionButton) {
         newSessionButton.setOnClickListener(v -> mTermuxTerminalSessionActivityClient.addNewSession(false, null));
         newSessionButton.setOnLongClickListener(v -> {
             TextInputDialogUtils.textInput(TermuxActivity.this, R.string.title_create_named_session, null,
@@ -582,17 +589,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
-    private void setToggleKeyboardView() {
-        findViewById(R.id.toggle_keyboard_button).setOnClickListener(v -> {
-            mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
-            getDrawer().closeDrawers();
-        });
 
-        findViewById(R.id.toggle_keyboard_button).setOnLongClickListener(v -> {
-            toggleTerminalToolbar();
-            return true;
-        });
-    }
 
 
 
@@ -856,7 +853,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
     public void termuxSessionListNotifyUpdated() {
-        mTermuxSessionListViewController.notifyDataSetChanged();
+        if (mTermuxSessionListViewController != null && mTermuxService != null) {
+            mTermuxSessionListViewController.updateSessionList(mTermuxService.getTermuxSessions());
+        }
     }
 
     public boolean isVisible() {

@@ -52,6 +52,7 @@ public class TerminalExtraKeys implements ExtraKeysView.IExtraKeysView {
     }
 
     protected void onTerminalExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean fnDown) {
+        if (key == null || key.isEmpty()) return;
         if (PRIMARY_KEY_CODES_FOR_STRINGS.containsKey(key)) {
             Integer keyCode = PRIMARY_KEY_CODES_FOR_STRINGS.get(key);
             if (keyCode == null) return;

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="6dp"
+    android:layout_marginEnd="6dp"
+    android:minWidth="48dp"
+    android:minHeight="26dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/terminal_session_tab_background"
+    android:paddingStart="10dp"
+    android:paddingTop="5dp"
+    android:paddingEnd="6dp"
+    android:paddingBottom="5dp">
+
+    <!-- 会话编号徽标 -->
+    <TextView
+        android:id="@+id/terminal_session_tab_number"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="16dp"
+        android:minHeight="16dp"
+        android:gravity="center"
+        android:paddingStart="3dp"
+        android:paddingEnd="3dp"
+        android:background="@drawable/terminal_session_tab_number_background"
+        android:textColor="@color/terminal_session_tab_number_color"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:duplicateParentState="true" />
+
+    <!-- 会话标题 -->
+    <TextView
+        android:id="@+id/terminal_session_tab_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:maxWidth="180dp"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:paddingStart="6dp"
+        android:paddingEnd="4dp"
+        android:textColor="@color/terminal_session_tab_title_color"
+        android:textSize="12sp"
+        android:duplicateParentState="true" />
+
+    <!-- 关闭按钮 -->
+    <TextView
+        android:id="@+id/terminal_session_tab_close"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="4dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="2dp"
+        android:text="✕"
+        android:textColor="@color/terminal_session_tab_close_color"
+        android:textSize="13sp"
+        android:duplicateParentState="true"
+        android:contentDescription="@string/action_close_session" />
+
+</LinearLayout>

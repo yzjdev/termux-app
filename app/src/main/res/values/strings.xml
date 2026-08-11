@@ -60,6 +60,10 @@
     <string name="title_create_named_session">New named session</string>
     <string name="action_create_named_session_confirm">Create</string>
 
+    <string name="action_close_session">Close session</string>
+    <string name="title_confirm_close_session">Close session?</string>
+    <string name="msg_confirm_close_session">Do you want to close the session \"%1$s\"?</string>
+
     <string name="action_toggle_soft_keyboard">Keyboard</string>
 
     <string name="msg_enabling_terminal_toolbar">Enabling Terminal Toolbar</string>
