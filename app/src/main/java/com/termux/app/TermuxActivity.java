@@ -251,6 +251,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setNewSessionButtonView();
 
+        setDrawerInstallButtonsView();
+
         registerForContextMenu(mTerminalView);
 
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
@@ -575,6 +577,34 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void setNewSessionButtonView() {
         setNewSessionButtonClickListeners(findViewById(R.id.new_tab_session_button));
+    }
+
+    /**
+     * Set click listeners for the quick install buttons in the left drawer. Each button
+     * opens a new terminal session that runs the install command so the user can see the
+     * progress and result.
+     */
+    private void setDrawerInstallButtonsView() {
+        setInstallButtonClickListener(R.id.install_zsh_button, "pkg install -y zsh git vim");
+        setInstallButtonClickListener(R.id.install_ohmyzsh_button, "sh -c \"$(curl -fsSL https://install.ohmyz.sh/)\"");
+        setInstallButtonClickListener(R.id.install_zsh_autosuggestions_button,
+            "git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions && (grep -q \"zsh-autosuggestions\" ~/.zshrc || sed -i 's/^plugins=(\\([^)]*\\))/plugins=(\\1 zsh-autosuggestions)/' ~/.zshrc)");
+        setInstallButtonClickListener(R.id.install_opencode_button, "curl -fsSL https://raw.githubusercontent.com/yzjdev/termux-help/main/opencode/install.sh | bash");
+        setInstallButtonClickListener(R.id.install_atomcode_button, "curl -fsSL https://raw.atomgit.com/atomgit_atomcode/atomcode/raw/main/scripts/install.sh | sh");
+        setInstallButtonClickListener(R.id.update_packages_button, "apt update && apt upgrade -y");
+    }
+
+    private void setInstallButtonClickListener(int viewId, String command) {
+        findViewById(viewId).setOnClickListener(v -> runInstallCommand(command));
+    }
+
+    private void runInstallCommand(String command) {
+        TerminalSession session = getCurrentSession();
+        if (session == null || !session.isRunning()) return;
+
+        // Run the command in the current session's shell instead of opening a new session.
+        session.write(command + "\r");
+        getDrawer().closeDrawers();
     }
 
     private void setNewSessionButtonClickListeners(View newSessionButton) {
