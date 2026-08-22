@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 侧栏快捷安装按钮背景：圆角、按下态微亮 -->
+<!-- 侧栏文件列表项背景：圆角、按压态微亮 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="#33FFFFFF" />
             <corners android:radius="10dp" />
+            <solid android:color="@color/drawer_list_item_background_pressed" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#14FFFFFF" />
             <corners android:radius="10dp" />
+            <solid android:color="@color/drawer_list_item_background" />
         </shape>
     </item>
 </selector>

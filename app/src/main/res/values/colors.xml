@@ -1,3 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Selected tab background in the left drawer. Light theme: dark translucent. -->
+    <color name="drawer_tab_selected_background">#33000000</color>
+    <!-- Bottom indicator bar color of the selected tab. Light theme: black. -->
+    <color name="drawer_tab_indicator">#FF000000</color>
+
+    <!-- Segmented tab: selected tab solid background. Light theme: black (matches
+         termuxActivityDrawerImageTint). -->
+    <color name="drawer_tab_fill">#FF000000</color>
+    <!-- Segmented tab: text color on the selected (filled) tab. Light theme: white. -->
+    <color name="drawer_tab_fill_text">#FFFFFFFF</color>
+
+    <!-- Quick install button background. Light theme: dark translucent. -->
+    <color name="drawer_button_background">#14000000</color>
+    <!-- Quick install button pressed background. Light theme: darker translucent. -->
+    <color name="drawer_button_background_pressed">#33000000</color>
+    <!-- Drawer list item background. Light theme: faint dark translucent. -->
+    <color name="drawer_list_item_background">#0A000000</color>
+    <!-- Drawer list item pressed background. Light theme: light dark translucent. -->
+    <color name="drawer_list_item_background_pressed">#1A000000</color>
+    <!-- Drawer section title color. Light theme: semi-transparent black. -->
+    <color name="drawer_section_title">#99000000</color>
 </resources>

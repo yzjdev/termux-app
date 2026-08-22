@@ -9,7 +9,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.graphics.Typeface;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.view.ContextMenu;
@@ -19,11 +21,14 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.Button;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.termux.R;
@@ -63,11 +68,18 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
 
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.tabs.TabLayout;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * A terminal emulator activity.
@@ -149,6 +161,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * The last toast shown, used cancel current toast before showing new in {@link #showToast(String, boolean)}.
      */
     Toast mLastToast;
+
+    /**
+     * The directory currently shown in the drawer file list. Defaults to the Termux files directory.
+     */
+    private File mDrawerFileListCurrentDir;
+
+    /**
+     * The files/directories currently listed in the drawer file list, in display order.
+     */
+    private List<File> mDrawerFileListItems = new ArrayList<>();
+
+    /**
+     * The adapter for the drawer file list.
+     */
+    private final DrawerFileListAdapter mDrawerFileListAdapter = new DrawerFileListAdapter();
+
+    /**
+     * The adapter for the drawer quick commands list.
+     */
+    private final QuickCommandAdapter mQuickCommandAdapter = new QuickCommandAdapter();
 
     /**
      * If between onResume() and onStop(). Note that only one session is in the foreground of the terminal view at the
@@ -252,6 +284,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setNewSessionButtonView();
 
         setDrawerInstallButtonsView();
+
+        setDrawerTabView();
+
+        setDrawerFileListView();
 
         registerForContextMenu(mTerminalView);
 
@@ -471,9 +507,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void setMargins() {
         RelativeLayout relativeLayout = findViewById(R.id.activity_termux_root_relative_layout);
-        int marginHorizontal = mProperties.getTerminalMarginHorizontal();
         int marginVertical = mProperties.getTerminalMarginVertical();
-        ViewUtils.setLayoutMarginsInDp(relativeLayout, marginHorizontal, marginVertical, marginHorizontal, marginVertical);
+        // 水平 margin 固定为 0：否则 RelativeLayout（DrawerLayout 父容器）会被整体右移，
+        // 导致侧栏左缘无法紧贴屏幕边缘，露出黑色窗口背景形成黑线。
+        ViewUtils.setLayoutMarginsInDp(relativeLayout, 0, marginVertical, 0, marginVertical);
     }
 
 
@@ -569,7 +606,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
     private void setSettingsButtonView() {
-        ImageButton settingsButton = findViewById(R.id.settings_button);
+        MaterialButton settingsButton = findViewById(R.id.settings_button);
         settingsButton.setOnClickListener(v -> {
             ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class));
         });
@@ -580,22 +617,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /**
-     * Set click listeners for the quick install buttons in the left drawer. Each button
-     * opens a new terminal session that runs the install command so the user can see the
-     * progress and result.
+     * Set up the quick commands list in the left drawer. Each item opens the current
+     * terminal session and runs the command so the user can see the progress and result.
      */
     private void setDrawerInstallButtonsView() {
-        setInstallButtonClickListener(R.id.install_zsh_button, "pkg install -y zsh git vim");
-        setInstallButtonClickListener(R.id.install_ohmyzsh_button, "sh -c \"$(curl -fsSL https://install.ohmyz.sh/)\"");
-        setInstallButtonClickListener(R.id.install_zsh_autosuggestions_button,
-            "git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions && (grep -q \"zsh-autosuggestions\" ~/.zshrc || sed -i 's/^plugins=(\\([^)]*\\))/plugins=(\\1 zsh-autosuggestions)/' ~/.zshrc)");
-        setInstallButtonClickListener(R.id.install_opencode_button, "curl -fsSL https://raw.githubusercontent.com/yzjdev/termux-help/main/opencode/install.sh | bash");
-        setInstallButtonClickListener(R.id.install_atomcode_button, "curl -fsSL https://raw.atomgit.com/atomgit_atomcode/atomcode/raw/main/scripts/install.sh | sh");
-        setInstallButtonClickListener(R.id.update_packages_button, "apt update && apt upgrade -y");
-    }
-
-    private void setInstallButtonClickListener(int viewId, String command) {
-        findViewById(viewId).setOnClickListener(v -> runInstallCommand(command));
+        RecyclerView quickCommandsView = findViewById(R.id.drawer_quick_commands_view);
+        quickCommandsView.setLayoutManager(new LinearLayoutManager(this));
+        quickCommandsView.setAdapter(mQuickCommandAdapter);
     }
 
     private void runInstallCommand(String command) {
@@ -605,6 +633,199 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Run the command in the current session's shell instead of opening a new session.
         session.write(command + "\r");
         getDrawer().closeDrawers();
+    }
+
+    private static final String[][] COMMANDS = {
+        {"更新源", "apt update && apt upgrade -y"},
+        {"安装 zsh", "pkg install -y zsh git vim"},
+        {"安装 ohmyzsh", "sh -c \"$(curl -fsSL https://install.ohmyz.sh/)\""},
+        {"安装 zsh-autosuggestions",
+            "git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions && (grep -q \"zsh-autosuggestions\" ~/.zshrc || sed -i 's/^plugins=(\\([^)]*\\))/plugins=(\\1 zsh-autosuggestions)/' ~/.zshrc)"},
+        {"安装 opencode", "curl -fsSL https://raw.githubusercontent.com/yzjdev/termux-help/main/opencode/install.sh | bash"},
+        {"安装 atomcode", "curl -fsSL https://raw.atomgit.com/atomgit_atomcode/atomcode/raw/main/scripts/install.sh | sh"}
+    };
+
+    private static final int[] COMMAND_ICONS = {
+        R.drawable.ic_drawer_refresh,
+        R.drawable.ic_drawer_terminal,
+        R.drawable.ic_drawer_ohmyzsh,
+        R.drawable.ic_drawer_extension,
+        R.drawable.ic_drawer_code,
+        R.drawable.ic_drawer_bolt
+    };
+
+    /**
+     * Adapter for the quick commands list in the left drawer. Each item is a row that
+     * runs its command in the current terminal session when tapped.
+     */
+    private class QuickCommandAdapter extends RecyclerView.Adapter<QuickCommandAdapter.CommandViewHolder> {
+
+
+
+        @NonNull
+        @Override
+        public CommandViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.drawer_quick_command_item, parent, false);
+            return new CommandViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull CommandViewHolder holder, int position) {
+            String[] command = COMMANDS[position];
+            holder.iconView.setImageResource(COMMAND_ICONS[position]);
+            holder.textView.setText(command[0]);
+            holder.itemView.setOnClickListener(v -> runInstallCommand(command[1]));
+        }
+
+        @Override
+        public int getItemCount() {
+            return COMMANDS.length;
+        }
+
+        class CommandViewHolder extends RecyclerView.ViewHolder {
+
+            final TextView textView;
+            final ImageView iconView;
+
+            CommandViewHolder(@NonNull View itemView) {
+                super(itemView);
+                textView = itemView.findViewById(R.id.quick_command_text);
+                iconView = itemView.findViewById(R.id.quick_command_icon);
+            }
+        }
+    }
+
+    /**
+     * Set up the tab switching between the file list and the quick install buttons in the
+     * left drawer. Only one section is visible at a time, the active tab is highlighted.
+     */
+    private void setDrawerTabView() {
+        TabLayout tabLayout = findViewById(R.id.drawer_tab_group);
+        tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                boolean showFiles = tab.getPosition() == 0;
+                findViewById(R.id.drawer_file_list_section).setVisibility(showFiles ? View.VISIBLE : View.GONE);
+                findViewById(R.id.drawer_install_buttons_section).setVisibility(showFiles ? View.GONE : View.VISIBLE);
+            }
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {
+            }
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+            }
+        });
+
+        addDrawerTab(tabLayout, "📁 文件");
+        addDrawerTab(tabLayout, "⚡ 快捷指令");
+    }
+
+    private void addDrawerTab(TabLayout tabLayout, String text) {
+        TabLayout.Tab tab = tabLayout.newTab();
+        tab.setText(text);
+        tabLayout.addTab(tab);
+    }
+
+    /**
+     * Set up the file list in the left drawer. The list starts at the Termux files directory and
+     * supports navigating into subdirectories and back up to the files directory root.
+     */
+    private void setDrawerFileListView() {
+        mDrawerFileListCurrentDir = TermuxConstants.TERMUX_FILES_DIR;
+
+        RecyclerView fileListView = findViewById(R.id.drawer_file_list_view);
+        fileListView.setLayoutManager(new LinearLayoutManager(this));
+        fileListView.setAdapter(mDrawerFileListAdapter);
+
+        findViewById(R.id.drawer_file_list_back_button).setOnClickListener(v -> {
+            File parent = mDrawerFileListCurrentDir.getParentFile();
+            if (parent != null && !mDrawerFileListCurrentDir.equals(TermuxConstants.TERMUX_FILES_DIR)) {
+                mDrawerFileListCurrentDir = parent;
+                refreshDrawerFileList();
+            }
+        });
+
+        refreshDrawerFileList();
+    }
+
+    /**
+     * Reload the drawer file list for {@link #mDrawerFileListCurrentDir}, showing directories
+     * first and then files, both sorted by name.
+     */
+    private void refreshDrawerFileList() {
+        TextView title = findViewById(R.id.drawer_file_list_title);
+        title.setText(mDrawerFileListCurrentDir.getAbsolutePath());
+
+        TextView backButton = findViewById(R.id.drawer_file_list_back_button);
+        backButton.setVisibility(mDrawerFileListCurrentDir.equals(TermuxConstants.TERMUX_FILES_DIR) ? View.GONE : View.VISIBLE);
+
+        mDrawerFileListItems.clear();
+        File[] files = mDrawerFileListCurrentDir.listFiles();
+        if (files != null) {
+            List<File> dirs = new ArrayList<>();
+            List<File> regularFiles = new ArrayList<>();
+            for (File file : files) {
+                if (file.isDirectory()) dirs.add(file);
+                else regularFiles.add(file);
+            }
+            dirs.sort(Comparator.comparing(File::getName));
+            regularFiles.sort(Comparator.comparing(File::getName));
+            mDrawerFileListItems.addAll(dirs);
+            mDrawerFileListItems.addAll(regularFiles);
+        }
+
+        mDrawerFileListAdapter.notifyDataSetChanged();
+    }
+
+    /**
+     * Adapter for the drawer file list. Shows directories first and then files (the display order
+     * is already set in {@link #refreshDrawerFileList()}), with Material folder/file icons.
+     */
+    private class DrawerFileListAdapter extends RecyclerView.Adapter<DrawerFileListAdapter.FileViewHolder> {
+
+        @NonNull
+        @Override
+        public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = getLayoutInflater().inflate(R.layout.drawer_file_list_item, parent, false);
+            return new FileViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
+            File file = mDrawerFileListItems.get(position);
+            holder.textView.setText(file.getName());
+            holder.iconView.setImageResource(file.isDirectory() ? R.drawable.ic_drawer_folder : R.drawable.ic_drawer_file);
+        }
+
+        @Override
+        public int getItemCount() {
+            return mDrawerFileListItems.size();
+        }
+
+        class FileViewHolder extends RecyclerView.ViewHolder {
+
+            final TextView textView;
+            final ImageView iconView;
+
+            FileViewHolder(@NonNull View itemView) {
+                super(itemView);
+                textView = itemView.findViewById(R.id.drawer_file_list_item_text);
+                iconView = itemView.findViewById(R.id.drawer_file_list_item_icon);
+                itemView.setOnClickListener(v -> {
+                    int position = getBindingAdapterPosition();
+                    if (position == RecyclerView.NO_POSITION) return;
+                    File file = mDrawerFileListItems.get(position);
+                    if (file.isDirectory()) {
+                        mDrawerFileListCurrentDir = file;
+                        refreshDrawerFileList();
+                    } else {
+                        Toast.makeText(TermuxActivity.this, file.getAbsolutePath(), Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        }
     }
 
     private void setNewSessionButtonClickListeners(View newSessionButton) {
