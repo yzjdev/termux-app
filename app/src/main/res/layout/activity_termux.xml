@@ -49,9 +49,9 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/new_tab_session_button"
-                        style="@style/Widget.Material3.Button.UnelevatedButton"
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
+                        style="@style/Widget.Material3.Button.IconButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:layout_gravity="center_vertical"
                         android:layout_marginEnd="4dp"
                         android:insetTop="0dp"
@@ -59,11 +59,9 @@
                         android:minWidth="0dp"
                         android:minHeight="0dp"
                         android:padding="0dp"
-                        android:text="+"
-                        android:textColor="@color/white"
-                        android:textSize="18sp"
-                        app:backgroundTint="@color/red_400"
-                        app:cornerRadius="16dp" />
+                        app:icon="@drawable/ic_add"
+                        app:iconSize="20dp"
+                        app:iconTint="@color/white" />
                 </LinearLayout>
 
                 <com.termux.view.TerminalView
@@ -136,7 +134,7 @@
                             android:layout_width="0dp"
                             android:layout_height="36dp"
                             android:layout_weight="1"
-                            android:ellipsize="middle"
+                            android:ellipsize="start"
                             android:gravity="center_vertical"
                             android:singleLine="true"
                             android:text="📁 文件"
@@ -194,11 +192,61 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="end"
+                    android:gravity="center_vertical"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
                     android:paddingTop="8dp"
                     android:paddingBottom="12dp">
+
+                    <HorizontalScrollView
+                        android:id="@+id/drawer_dir_switch_scroll_view"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fillViewport="false"
+                        android:overScrollMode="never"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/drawer_dir_switch_files_button"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:minHeight="0dp"
+                                android:paddingStart="8dp"
+                                android:paddingEnd="8dp"
+                                android:text="📁 内部存储"
+                                android:textSize="12sp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/drawer_dir_switch_external_files_button"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:minHeight="0dp"
+                                android:paddingStart="8dp"
+                                android:paddingEnd="8dp"
+                                android:text="📁 外部存储"
+                                android:textSize="12sp" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/drawer_dir_switch_external_shared_button"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="36dp"
+                                android:minHeight="0dp"
+                                android:paddingStart="8dp"
+                                android:paddingEnd="8dp"
+                                android:text="📁 共享存储"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </HorizontalScrollView>
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/settings_button"
                         style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"

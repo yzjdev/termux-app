@@ -13,7 +13,9 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
@@ -44,8 +46,10 @@ import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.data.DataUtils;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
+import com.termux.app.activities.FileEditorActivity;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
+import com.termux.app.file.TextFileDetector;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
@@ -58,6 +62,7 @@ import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.shared.theme.NightMode;
+import com.termux.shared.view.KeyboardUtils;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
@@ -166,6 +171,38 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * The directory currently shown in the drawer file list. Defaults to the Termux files directory.
      */
     private File mDrawerFileListCurrentDir;
+
+    /**
+     * The root directory the drawer file list currently belongs to: one of the Termux files
+     * directory, the app external files directory or the shared external storage directory.
+     */
+    private File mDrawerFileListRootDir;
+
+    /**
+     * The last directory switch button tapped and the time of the tap, used to detect a double
+     * tap which returns to the root directory of the tapped tab.
+     */
+    private View mLastDirSwitchButton;
+    private long mLastDirSwitchTime;
+
+    /**
+     * Preference keys for the last browsed directory of each root directory tab.
+     */
+    private static final String PREF_KEY_DRAWER_FILE_LIST_DIR_FILES = "drawer_file_list_dir_files";
+    private static final String PREF_KEY_DRAWER_FILE_LIST_DIR_EXTERNAL_FILES = "drawer_file_list_dir_external_files";
+    private static final String PREF_KEY_DRAWER_FILE_LIST_DIR_EXTERNAL_SHARED = "drawer_file_list_dir_external_shared";
+
+    /** Preference key for the last active root directory tab. */
+    private static final String PREF_KEY_DRAWER_FILE_LIST_ACTIVE_ROOT = "drawer_file_list_active_root";
+
+    /** Time window in milliseconds for a double tap on a directory switch button. */
+    private static final long DOUBLE_TAP_DELAY_MILLIS = 400;
+
+    /**
+     * If set, the drawer is not closed in {@link #onStop()}. Used when opening the file editor
+     * so that the drawer stays open when coming back from it.
+     */
+    private boolean mKeepDrawerOpenOnStop;
 
     /**
      * The files/directories currently listed in the drawer file list, in display order.
@@ -379,7 +416,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         removeTermuxActivityRootViewGlobalLayoutListener();
 
         unregisterTermuxActivityBroadcastReceiver();
-        getDrawer().closeDrawers();
+        if (!mKeepDrawerOpenOnStop) {
+            getDrawer().closeDrawers();
+        }
+        mKeepDrawerOpenOnStop = false;
     }
 
     @Override
@@ -642,7 +682,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         {"安装 zsh-autosuggestions",
             "git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions && (grep -q \"zsh-autosuggestions\" ~/.zshrc || sed -i 's/^plugins=(\\([^)]*\\))/plugins=(\\1 zsh-autosuggestions)/' ~/.zshrc)"},
         {"安装 opencode", "curl -fsSL https://raw.githubusercontent.com/yzjdev/termux-help/main/opencode/install.sh | bash"},
-        {"安装 atomcode", "curl -fsSL https://raw.atomgit.com/atomgit_atomcode/atomcode/raw/main/scripts/install.sh | sh"}
+        {"安装 atomcode", "curl -fsSL https://raw.atomgit.com/atomgit_atomcode/atomcode/raw/main/scripts/install.sh | sh"},
+        {"请求存储权限", "termux-setup-storage"}
     };
 
     private static final int[] COMMAND_ICONS = {
@@ -651,7 +692,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         R.drawable.ic_drawer_ohmyzsh,
         R.drawable.ic_drawer_extension,
         R.drawable.ic_drawer_code,
-        R.drawable.ic_drawer_bolt
+        R.drawable.ic_drawer_bolt,
+        R.drawable.ic_drawer_folder
     };
 
     /**
@@ -707,6 +749,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 boolean showFiles = tab.getPosition() == 0;
                 findViewById(R.id.drawer_file_list_section).setVisibility(showFiles ? View.VISIBLE : View.GONE);
                 findViewById(R.id.drawer_install_buttons_section).setVisibility(showFiles ? View.GONE : View.VISIBLE);
+                // The directory switch buttons only apply to the file list tab.
+                int dirSwitchVisibility = showFiles ? View.VISIBLE : View.GONE;
+                findViewById(R.id.drawer_dir_switch_files_button).setVisibility(dirSwitchVisibility);
+                findViewById(R.id.drawer_dir_switch_external_files_button).setVisibility(dirSwitchVisibility);
+                findViewById(R.id.drawer_dir_switch_external_shared_button).setVisibility(dirSwitchVisibility);
             }
 
             @Override
@@ -729,11 +776,36 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /**
-     * Set up the file list in the left drawer. The list starts at the Termux files directory and
-     * supports navigating into subdirectories and back up to the files directory root.
+     * Set up the file list in the left drawer. The list starts at the last shown directory,
+     * or the Termux files directory on first use, and supports navigating into subdirectories
+     * and back up to the files directory root. The current directory is persisted so that it
+     * is restored when the activity is recreated (rotation, process restart, ...).
      */
     private void setDrawerFileListView() {
-        mDrawerFileListCurrentDir = TermuxConstants.TERMUX_FILES_DIR;
+        // Restore the last active root tab and its last browsed directory.
+        mDrawerFileListRootDir = getLastActiveRootDir();
+        mDrawerFileListCurrentDir = getLastDrawerFileListDir(mDrawerFileListRootDir);
+
+        // Disable swipe-to-close while the drawer is open so that horizontal scrolling over the
+        // directory switch buttons does not conflict with the drawer closing gesture. The drawer
+        // can still be closed programmatically (back button, tab switching, running commands).
+        // While closed, the edge-open gesture is disabled as well; the drawer can only be
+        // opened programmatically (e.g. the DRAWER extra key).
+        getDrawer().addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerOpened(@NonNull View drawerView) {
+                getDrawer().setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_OPEN);
+                // Hide the soft keyboard so it does not cover the drawer content.
+                KeyboardUtils.hideSoftKeyboard(TermuxActivity.this, mTerminalView);
+            }
+
+            @Override
+            public void onDrawerClosed(@NonNull View drawerView) {
+                getDrawer().setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+            }
+        });
+        // The drawer is initially closed; lock it so it cannot be opened by the edge gesture.
+        getDrawer().setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
 
         RecyclerView fileListView = findViewById(R.id.drawer_file_list_view);
         fileListView.setLayoutManager(new LinearLayoutManager(this));
@@ -741,13 +813,37 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         findViewById(R.id.drawer_file_list_back_button).setOnClickListener(v -> {
             File parent = mDrawerFileListCurrentDir.getParentFile();
-            if (parent != null && !mDrawerFileListCurrentDir.equals(TermuxConstants.TERMUX_FILES_DIR)) {
+            if (parent != null && !isDrawerFileListRootDir(mDrawerFileListCurrentDir)) {
                 mDrawerFileListCurrentDir = parent;
                 refreshDrawerFileList();
             }
         });
 
+        // Directory switch buttons: a single tap restores the last browsed directory of the
+        // tapped root tab, a double tap returns to the root directory itself.
+        findViewById(R.id.drawer_dir_switch_files_button).setOnClickListener(v ->
+            switchDrawerFileListDir(TermuxConstants.TERMUX_FILES_DIR, v));
+
+        findViewById(R.id.drawer_dir_switch_external_files_button).setOnClickListener(v -> {
+            File externalFilesDir = getExternalFilesDir(null);
+            if (externalFilesDir != null && externalFilesDir.isDirectory()) {
+                switchDrawerFileListDir(externalFilesDir, v);
+            } else {
+                Toast.makeText(TermuxActivity.this, R.string.msg_external_files_dir_unavailable, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        findViewById(R.id.drawer_dir_switch_external_shared_button).setOnClickListener(v -> {
+            File externalSharedDir = Environment.getExternalStorageDirectory();
+            if (externalSharedDir.isDirectory()) {
+                switchDrawerFileListDir(externalSharedDir, v);
+            } else {
+                Toast.makeText(TermuxActivity.this, R.string.msg_external_shared_dir_unavailable, Toast.LENGTH_SHORT).show();
+            }
+        });
+
         refreshDrawerFileList();
+        updateDirSwitchButtonStates();
     }
 
     /**
@@ -759,7 +855,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         title.setText(mDrawerFileListCurrentDir.getAbsolutePath());
 
         TextView backButton = findViewById(R.id.drawer_file_list_back_button);
-        backButton.setVisibility(mDrawerFileListCurrentDir.equals(TermuxConstants.TERMUX_FILES_DIR) ? View.GONE : View.VISIBLE);
+        backButton.setVisibility(isDrawerFileListRootDir(mDrawerFileListCurrentDir) ? View.GONE : View.VISIBLE);
 
         mDrawerFileListItems.clear();
         File[] files = mDrawerFileListCurrentDir.listFiles();
@@ -770,13 +866,117 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (file.isDirectory()) dirs.add(file);
                 else regularFiles.add(file);
             }
-            dirs.sort(Comparator.comparing(File::getName));
-            regularFiles.sort(Comparator.comparing(File::getName));
+            dirs.sort(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+            regularFiles.sort(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
             mDrawerFileListItems.addAll(dirs);
             mDrawerFileListItems.addAll(regularFiles);
         }
 
         mDrawerFileListAdapter.notifyDataSetChanged();
+
+        // Remember the current directory so it can be restored on activity recreation.
+        saveDrawerFileListDir();
+    }
+
+    /**
+     * Get the preference key for the last browsed directory of {@code rootDir}.
+     */
+    private String getDrawerFileListDirPrefKey(File rootDir) {
+        if (rootDir.equals(TermuxConstants.TERMUX_FILES_DIR)) return PREF_KEY_DRAWER_FILE_LIST_DIR_FILES;
+        File externalFilesDir = getExternalFilesDir(null);
+        if (externalFilesDir != null && rootDir.equals(externalFilesDir)) return PREF_KEY_DRAWER_FILE_LIST_DIR_EXTERNAL_FILES;
+        return PREF_KEY_DRAWER_FILE_LIST_DIR_EXTERNAL_SHARED;
+    }
+
+    /**
+     * Get the last active root directory tab, falling back to the Termux files directory if
+     * nothing was saved yet or the saved root is no longer a valid root directory.
+     */
+    private File getLastActiveRootDir() {
+        String savedRoot = getSharedPreferences(TermuxConstants.TERMUX_DEFAULT_PREFERENCES_FILE_BASENAME_WITHOUT_EXTENSION, MODE_PRIVATE)
+            .getString(PREF_KEY_DRAWER_FILE_LIST_ACTIVE_ROOT, null);
+        if (savedRoot != null) {
+            File root = new File(savedRoot);
+            if (isDrawerFileListRootDir(root) && root.isDirectory()) return root;
+        }
+        return TermuxConstants.TERMUX_FILES_DIR;
+    }
+
+    /**
+     * Get the last directory shown in the drawer file list for {@code rootDir}, falling back
+     * to {@code rootDir} itself if nothing was saved yet or the saved path no longer exists.
+     */
+    private File getLastDrawerFileListDir(File rootDir) {
+        String savedPath = getSharedPreferences(TermuxConstants.TERMUX_DEFAULT_PREFERENCES_FILE_BASENAME_WITHOUT_EXTENSION, MODE_PRIVATE)
+            .getString(getDrawerFileListDirPrefKey(rootDir), null);
+        if (savedPath != null) {
+            File savedDir = new File(savedPath);
+            if (savedDir.isDirectory()) return savedDir;
+        }
+        return rootDir;
+    }
+
+    /**
+     * Persist the directory currently shown in the drawer file list under its root tab, and
+     * remember that root tab as the active one.
+     */
+    private void saveDrawerFileListDir() {
+        if (mDrawerFileListRootDir == null) return;
+        getSharedPreferences(TermuxConstants.TERMUX_DEFAULT_PREFERENCES_FILE_BASENAME_WITHOUT_EXTENSION, MODE_PRIVATE)
+            .edit()
+            .putString(getDrawerFileListDirPrefKey(mDrawerFileListRootDir), mDrawerFileListCurrentDir.getAbsolutePath())
+            .putString(PREF_KEY_DRAWER_FILE_LIST_ACTIVE_ROOT, mDrawerFileListRootDir.getAbsolutePath())
+            .apply();
+    }
+
+    /**
+     * Switch the drawer file list to {@code rootDir}: a single tap restores the last browsed
+     * directory of that tab, a double tap (two taps on the same button within a short time)
+     * returns to the root directory itself.
+     */
+    private void switchDrawerFileListDir(File rootDir, View button) {
+        long now = SystemClock.uptimeMillis();
+        boolean isDoubleTap = button == mLastDirSwitchButton && now - mLastDirSwitchTime < DOUBLE_TAP_DELAY_MILLIS;
+        mLastDirSwitchButton = button;
+        mLastDirSwitchTime = now;
+
+        mDrawerFileListRootDir = rootDir;
+        mDrawerFileListCurrentDir = isDoubleTap ? rootDir : getLastDrawerFileListDir(rootDir);
+        refreshDrawerFileList();
+        updateDirSwitchButtonStates();
+    }
+
+    /**
+     * Sync the selected state of the three directory switch buttons with the current root tab.
+     * The active button is checked and shown in bold.
+     */
+    private void updateDirSwitchButtonStates() {
+        if (mDrawerFileListRootDir == null) return;
+        boolean isFiles = mDrawerFileListRootDir.equals(TermuxConstants.TERMUX_FILES_DIR);
+        File externalFilesDir = getExternalFilesDir(null);
+        boolean isExternalFiles = externalFilesDir != null && mDrawerFileListRootDir.equals(externalFilesDir);
+        boolean isExternalShared = mDrawerFileListRootDir.equals(Environment.getExternalStorageDirectory());
+
+        setDirSwitchButtonSelected(findViewById(R.id.drawer_dir_switch_files_button), isFiles);
+        setDirSwitchButtonSelected(findViewById(R.id.drawer_dir_switch_external_files_button), isExternalFiles);
+        setDirSwitchButtonSelected(findViewById(R.id.drawer_dir_switch_external_shared_button), isExternalShared);
+    }
+
+    private void setDirSwitchButtonSelected(MaterialButton button, boolean selected) {
+        button.setChecked(selected);
+        button.setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+    }
+
+    /**
+     * Check whether {@code dir} is a root of the drawer file list navigation: the Termux files
+     * directory, the app external files directory or the shared external storage directory.
+     */
+    private boolean isDrawerFileListRootDir(File dir) {
+        if (dir == null) return true;
+        if (dir.equals(TermuxConstants.TERMUX_FILES_DIR)) return true;
+        File externalFilesDir = getExternalFilesDir(null);
+        if (externalFilesDir != null && dir.equals(externalFilesDir)) return true;
+        return dir.equals(Environment.getExternalStorageDirectory());
     }
 
     /**
@@ -820,6 +1020,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     if (file.isDirectory()) {
                         mDrawerFileListCurrentDir = file;
                         refreshDrawerFileList();
+                    } else if (TextFileDetector.isTextFile(file)) {
+                        // Text file: open it in the sora-editor based text editor. Keep the
+                        // drawer open so that it is still open when coming back from the editor.
+                        mKeepDrawerOpenOnStop = true;
+                        Intent intent = new Intent(TermuxActivity.this, FileEditorActivity.class);
+                        intent.putExtra(FileEditorActivity.EXTRA_FILE_PATH, file.getAbsolutePath());
+                        startActivity(intent);
                     } else {
                         Toast.makeText(TermuxActivity.this, file.getAbsolutePath(), Toast.LENGTH_SHORT).show();
                     }

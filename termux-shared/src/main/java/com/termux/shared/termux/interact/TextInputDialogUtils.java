@@ -1,7 +1,7 @@
 package com.termux.shared.termux.interact;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.DialogInterface;
 import android.text.Selection;
 import android.util.TypedValue;
@@ -9,6 +9,8 @@ import android.view.KeyEvent;
 import android.view.ViewGroup.LayoutParams;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public final class TextInputDialogUtils {
 
@@ -28,7 +30,7 @@ public final class TextInputDialogUtils {
             Selection.setSelection(input.getText(), initialText.length());
         }
 
-        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        final Dialog[] dialogHolder = new Dialog[1];
         input.setImeActionLabel(activity.getResources().getString(positiveButtonText), KeyEvent.KEYCODE_ENTER);
         input.setOnEditorActionListener((v, actionId, event) -> {
             onPositive.onTextSet(input.getText().toString());
@@ -39,15 +41,16 @@ public final class TextInputDialogUtils {
         float dipInPixels = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1, activity.getResources().getDisplayMetrics());
         // https://www.google.com/design/spec/components/dialogs.html#dialogs-specs
         int paddingTopAndSides = Math.round(16 * dipInPixels);
-        int paddingBottom = Math.round(24 * dipInPixels);
+        int paddingBottom = 0;
+        int paddingLeftRight = Math.round(24 * dipInPixels);
 
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
-        layout.setPadding(paddingTopAndSides, paddingTopAndSides, paddingTopAndSides, paddingBottom);
+        layout.setPadding(paddingLeftRight, paddingTopAndSides, paddingLeftRight, paddingBottom);
         layout.addView(input);
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(activity, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog)
             .setTitle(titleText).setView(layout)
             .setPositiveButton(positiveButtonText, (d, whichButton) -> onPositive.onTextSet(input.getText().toString()));
 

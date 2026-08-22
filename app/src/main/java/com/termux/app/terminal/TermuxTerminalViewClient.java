@@ -230,8 +230,11 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
     @Override
     public void copyModeChanged(boolean copyMode) {
-        // Disable drawer while copying.
-        mActivity.getDrawer().setDrawerLockMode(copyMode ? DrawerLayout.LOCK_MODE_LOCKED_CLOSED : DrawerLayout.LOCK_MODE_UNLOCKED);
+        // Disable drawer while copying. On exit, keep gestures disabled: lock the drawer
+        // according to its current state instead of restoring LOCK_MODE_UNLOCKED.
+        DrawerLayout drawerLayout = mActivity.getDrawer();
+        drawerLayout.setDrawerLockMode(copyMode ? DrawerLayout.LOCK_MODE_LOCKED_CLOSED
+            : (drawerLayout.isDrawerOpen(Gravity.LEFT) ? DrawerLayout.LOCK_MODE_LOCKED_OPEN : DrawerLayout.LOCK_MODE_LOCKED_CLOSED));
     }
 
 
@@ -634,14 +637,15 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         // Do not force show soft keyboard if termux-reload-settings command was run with hardware keyboard
         // or soft keyboard is to be hidden or is disabled
         if (!isReloadTermuxProperties && !noShowKeyboard) {
-            // Request focus for TerminalView
-            // Also show the keyboard, since onFocusChange will not be called if TerminalView already
-            // had focus on startup to show the keyboard, like when opening url with context menu
-            // "Select URL" long press and returning to Termux app with back button. This
-            // will also show keyboard even if it was closed before opening url. #2111
-            Logger.logVerbose(LOG_TAG, "Requesting TerminalView focus and showing soft keyboard");
+            // Request focus for TerminalView. The soft keyboard is only shown automatically on
+            // the first resume after onCreate(); on later resumes (switching back from another
+            // app or the file editor) it is no longer forced open - the user can tap the
+            // terminal or press the KEYBOARD extra key to open it explicitly.
             mActivity.getTerminalView().requestFocus();
-            mActivity.getTerminalView().postDelayed(getShowSoftKeyboardRunnable(), 300);
+            if (isStartup && mActivity.isOnResumeAfterOnCreate()) {
+                Logger.logVerbose(LOG_TAG, "Requesting TerminalView focus and showing soft keyboard");
+                mActivity.getTerminalView().postDelayed(getShowSoftKeyboardRunnable(), 300);
+            }
         }
     }
 

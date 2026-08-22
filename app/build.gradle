@@ -52,6 +52,9 @@ android {
         implementation "io.noties.markwon:linkify:$markwonVersion"
         implementation "io.noties.markwon:recycler:$markwonVersion"
 
+        // sora-editor code editor widget (editing features only, no language plugins)
+        implementation "io.github.rosemoe:editor:0.24.4"
+
         implementation project(":terminal-view")
         implementation project(":termux-shared")
     }
@@ -120,8 +123,9 @@ android {
         // Flag to enable support for the new language APIs
         coreLibraryDesugaringEnabled true
 
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        // sora-editor requires Java 17 compatibility
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     lintOptions {

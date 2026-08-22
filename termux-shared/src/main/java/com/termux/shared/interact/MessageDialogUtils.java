@@ -1,17 +1,11 @@
 package com.termux.shared.interact;
 
-import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.graphics.Color;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.widget.Button;
-import android.widget.TextView;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import com.termux.shared.R;
-import com.termux.shared.logger.Logger;
 
 public class MessageDialogUtils {
 
@@ -51,21 +45,10 @@ public class MessageDialogUtils {
                                    final DialogInterface.OnClickListener onNegativeButton,
                                    final DialogInterface.OnDismissListener onDismiss) {
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(context, androidx.appcompat.R.style.Theme_AppCompat_Light_Dialog);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context, com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog);
 
-        LayoutInflater inflater = (LayoutInflater) context.getSystemService( Context.LAYOUT_INFLATER_SERVICE );
-        View view = inflater.inflate(R.layout.dialog_show_message, null);
-        if (view != null) {
-            builder.setView(view);
-
-            TextView titleView = view.findViewById(R.id.dialog_title);
-            if (titleView != null)
-                titleView.setText(titleText);
-
-            TextView messageView = view.findViewById(R.id.dialog_message);
-            if (messageView != null)
-                messageView.setText(messageText);
-        }
+        builder.setTitle(titleText);
+        builder.setMessage(messageText);
 
         if (positiveText == null)
             positiveText = context.getString(android.R.string.ok);
@@ -77,19 +60,7 @@ public class MessageDialogUtils {
         if (onDismiss != null)
             builder.setOnDismissListener(onDismiss);
 
-        AlertDialog dialog = builder.create();
-
-        dialog.setOnShowListener(dialogInterface -> {
-            Logger.logError("dialog");
-            Button button = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            if (button != null)
-                button.setTextColor(Color.BLACK);
-            button = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (button != null)
-                button.setTextColor(Color.BLACK);
-        });
-
-        dialog.show();
+        builder.show();
     }
 
     public static void exitAppWithErrorMessage(Context context, String titleText, String messageText) {
