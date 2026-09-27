@@ -107,26 +107,18 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingStart="12dp"
                     android:paddingEnd="12dp"
-                    android:paddingTop="8dp"
-                    android:paddingBottom="4dp">
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/settings_button"
                         style="@style/Widget.Material3.Button.IconButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
                         android:contentDescription="@string/action_open_settings"
                         app:icon="@drawable/ic_settings"
-                        app:iconTint="?attr/termuxActivityDrawerImageTint" />
+                       />
 
                     <com.google.android.material.button.MaterialButtonToggleGroup
                         android:id="@+id/drawer_tab_group"
