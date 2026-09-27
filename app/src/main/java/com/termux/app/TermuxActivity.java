@@ -8,8 +8,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.ServiceConnection;
-import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -50,6 +50,7 @@ import com.termux.app.activities.FileEditorActivity;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.app.file.TextFileDetector;
+import com.termux.app.models.QuickCommand;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
@@ -78,7 +79,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.tabs.TabLayout;
+
+import org.json.JSONArray;
+import org.json.JSONException;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -661,9 +666,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * terminal session and runs the command so the user can see the progress and result.
      */
     private void setDrawerInstallButtonsView() {
+        loadQuickCommands();
+
         RecyclerView quickCommandsView = findViewById(R.id.drawer_quick_commands_view);
         quickCommandsView.setLayoutManager(new LinearLayoutManager(this));
         quickCommandsView.setAdapter(mQuickCommandAdapter);
+
+        MaterialButton addButton = findViewById(R.id.drawer_quick_command_add_button);
+        addButton.setOnClickListener(v -> showQuickCommandEditDialog(-1));
     }
 
     private void runInstallCommand(String command) {
@@ -675,7 +685,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         getDrawer().closeDrawers();
     }
 
-    private static final String[][] COMMANDS = {
+    /** Key for the persisted quick commands JSON array in the activity preferences. */
+    private static final String KEY_QUICK_COMMANDS = "drawer_quick_commands";
+
+    /** The quick commands shown in the drawer, loaded from preferences or the built-in defaults. */
+    private final List<QuickCommand> mQuickCommands = new ArrayList<>();
+
+    /** Built-in default quick commands used to initialize the persisted list on first run. */
+    private static final String[][] DEFAULT_COMMANDS = {
         {"更新源", "apt update && apt upgrade -y"},
         {"安装 zsh", "pkg install -y zsh git vim"},
         {"安装 ohmyzsh", "sh -c \"$(curl -fsSL https://install.ohmyz.sh/)\""},
@@ -697,6 +714,130 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     };
 
     /**
+     * Load the quick commands from preferences, falling back to the built-in defaults
+     * (which are then persisted) when nothing has been saved yet.
+     */
+    private void loadQuickCommands() {
+        mQuickCommands.clear();
+        SharedPreferences preferences = getSharedPreferences("termux_activity", MODE_PRIVATE);
+        String json = preferences.getString(KEY_QUICK_COMMANDS, null);
+        boolean loaded = false;
+        if (json != null) {
+            try {
+                JSONArray array = new JSONArray(json);
+                for (int i = 0; i < array.length(); i++) {
+                    mQuickCommands.add(QuickCommand.fromJson(array.getJSONObject(i)));
+                }
+                loaded = !mQuickCommands.isEmpty();
+            } catch (JSONException e) {
+                Logger.logError("TermuxActivity", "Failed to parse saved quick commands: " + e.getMessage());
+            }
+        }
+        if (!loaded) {
+            for (int i = 0; i < DEFAULT_COMMANDS.length; i++) {
+                mQuickCommands.add(new QuickCommand(DEFAULT_COMMANDS[i][0], DEFAULT_COMMANDS[i][1],
+                    COMMAND_ICONS[i % COMMAND_ICONS.length]));
+            }
+            saveQuickCommands();
+        }
+    }
+
+    /** Persist the current quick commands list as JSON. */
+    private void saveQuickCommands() {
+        JSONArray array = new JSONArray();
+        for (QuickCommand quickCommand : mQuickCommands) {
+            array.put(quickCommand.toJson());
+        }
+        SharedPreferences preferences = getSharedPreferences("termux_activity", MODE_PRIVATE);
+        preferences.edit().putString(KEY_QUICK_COMMANDS, array.toString()).apply();
+    }
+
+    /** Assign the next icon from the built-in icon pool for a newly created command. */
+    private int nextQuickCommandIcon() {
+        return COMMAND_ICONS[mQuickCommands.size() % COMMAND_ICONS.length];
+    }
+
+    /** Show the long-press menu for a quick command: run, edit or delete it. */
+    private void showQuickCommandMenu(int position) {
+        if (position < 0 || position >= mQuickCommands.size()) return;
+        final QuickCommand quickCommand = mQuickCommands.get(position);
+        final String[] actions = {"运行", "编辑", "删除"};
+        new AlertDialog.Builder(this).setTitle(quickCommand.name)
+            .setItems(actions, (dialog, which) -> {
+                if (which == 0) {
+                    runInstallCommand(quickCommand.command);
+                } else if (which == 1) {
+                    showQuickCommandEditDialog(position);
+                } else {
+                    showQuickCommandDeleteDialog(position);
+                }
+            }).show();
+    }
+
+    /** Confirm and delete the quick command at the given position. */
+    private void showQuickCommandDeleteDialog(int position) {
+        if (position < 0 || position >= mQuickCommands.size()) return;
+        final QuickCommand quickCommand = mQuickCommands.get(position);
+        new AlertDialog.Builder(this).setTitle(R.string.title_confirm_kill_process)
+            .setMessage(getString(R.string.msg_confirm_delete_quick_command, quickCommand.name))
+            .setPositiveButton(android.R.string.yes, (dialog, id) -> {
+                mQuickCommands.remove(position);
+                saveQuickCommands();
+                mQuickCommandAdapter.notifyItemRemoved(position);
+            })
+            .setNegativeButton(android.R.string.no, null).show();
+    }
+
+    /**
+     * Show a dialog with name and command inputs. When position is negative a new command is
+     * appended to the list, otherwise the command at the position is updated.
+     */
+    private void showQuickCommandEditDialog(int position) {
+        final boolean isNew = position < 0 || position >= mQuickCommands.size();
+        final QuickCommand quickCommand = isNew ? null : mQuickCommands.get(position);
+
+        @SuppressLint("InflateParams")
+        View view = getLayoutInflater().inflate(R.layout.dialog_quick_command_edit, null);
+        final EditText nameInput = view.findViewById(R.id.quick_command_name_input);
+        final EditText commandInput = view.findViewById(R.id.quick_command_command_input);
+        if (quickCommand != null) {
+            nameInput.setText(quickCommand.name);
+            commandInput.setText(quickCommand.command);
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+            .setTitle(isNew ? R.string.title_add_quick_command : R.string.title_edit_quick_command)
+            .setView(view)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(android.R.string.cancel, null);
+
+        final AlertDialog dialog = builder.create();
+        dialog.setOnShowListener(d -> {
+            Button okButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            okButton.setOnClickListener(v -> {
+                String name = nameInput.getText().toString().trim();
+                String command = commandInput.getText().toString().trim();
+                if (name.isEmpty() || command.isEmpty()) {
+                    Toast.makeText(this, R.string.msg_quick_command_required, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (isNew) {
+                    mQuickCommands.add(new QuickCommand(name, command, nextQuickCommandIcon()));
+                    saveQuickCommands();
+                    mQuickCommandAdapter.notifyItemInserted(mQuickCommands.size() - 1);
+                } else {
+                    quickCommand.name = name;
+                    quickCommand.command = command;
+                    saveQuickCommands();
+                    mQuickCommandAdapter.notifyItemChanged(position);
+                }
+                dialog.dismiss();
+            });
+        });
+        dialog.show();
+    }
+
+    /**
      * Adapter for the quick commands list in the left drawer. Each item is a row that
      * runs its command in the current terminal session when tapped.
      */
@@ -713,66 +854,63 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         @Override
         public void onBindViewHolder(@NonNull CommandViewHolder holder, int position) {
-            String[] command = COMMANDS[position];
-            holder.iconView.setImageResource(COMMAND_ICONS[position]);
-            holder.textView.setText(command[0]);
-            holder.itemView.setOnClickListener(v -> runInstallCommand(command[1]));
+            QuickCommand quickCommand = mQuickCommands.get(position);
+            holder.iconView.setImageResource(quickCommand.iconRes);
+            holder.textView.setText(quickCommand.name);
+            holder.commandTextView.setText(quickCommand.command);
+            holder.itemView.setOnClickListener(v -> showQuickCommandMenu(position));
+            holder.runButtonView.setOnClickListener(v -> runInstallCommand(quickCommand.command));
         }
 
         @Override
         public int getItemCount() {
-            return COMMANDS.length;
+            return mQuickCommands.size();
         }
 
         class CommandViewHolder extends RecyclerView.ViewHolder {
 
             final TextView textView;
+            final TextView commandTextView;
             final ImageView iconView;
+            final ImageView runButtonView;
 
             CommandViewHolder(@NonNull View itemView) {
                 super(itemView);
                 textView = itemView.findViewById(R.id.quick_command_text);
+                commandTextView = itemView.findViewById(R.id.quick_command_command_text);
                 iconView = itemView.findViewById(R.id.quick_command_icon);
+                runButtonView = itemView.findViewById(R.id.quick_command_run_button);
             }
         }
     }
 
     /**
      * Set up the tab switching between the file list and the quick install buttons in the
-     * left drawer. Only one section is visible at a time, the active tab is highlighted.
+     * left drawer. Only one section is visible at a time, the active button is filled.
      */
     private void setDrawerTabView() {
-        TabLayout tabLayout = findViewById(R.id.drawer_tab_group);
-        tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-            @Override
-            public void onTabSelected(TabLayout.Tab tab) {
-                boolean showFiles = tab.getPosition() == 0;
-                findViewById(R.id.drawer_file_list_section).setVisibility(showFiles ? View.VISIBLE : View.GONE);
-                findViewById(R.id.drawer_install_buttons_section).setVisibility(showFiles ? View.GONE : View.VISIBLE);
-                // The directory switch buttons only apply to the file list tab.
-                int dirSwitchVisibility = showFiles ? View.VISIBLE : View.GONE;
-                findViewById(R.id.drawer_dir_switch_files_button).setVisibility(dirSwitchVisibility);
-                findViewById(R.id.drawer_dir_switch_external_files_button).setVisibility(dirSwitchVisibility);
-                findViewById(R.id.drawer_dir_switch_external_shared_button).setVisibility(dirSwitchVisibility);
-            }
+        MaterialButtonToggleGroup tabGroup = findViewById(R.id.drawer_tab_group);
 
-            @Override
-            public void onTabUnselected(TabLayout.Tab tab) {
-            }
-
-            @Override
-            public void onTabReselected(TabLayout.Tab tab) {
-            }
+        tabGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) return;
+            boolean showFiles = checkedId == R.id.drawer_tab_files_button;
+            setDrawerTabSectionVisible(showFiles);
         });
 
-        addDrawerTab(tabLayout, "📁 文件");
-        addDrawerTab(tabLayout, "⚡ 快捷指令");
+        tabGroup.check(R.id.drawer_tab_files_button);
+        // check() above already fires the listener; sync once more from the actual
+        // checked state in case no button was checked yet.
+        setDrawerTabSectionVisible(tabGroup.getCheckedButtonId() == R.id.drawer_tab_files_button);
     }
 
-    private void addDrawerTab(TabLayout tabLayout, String text) {
-        TabLayout.Tab tab = tabLayout.newTab();
-        tab.setText(text);
-        tabLayout.addTab(tab);
+    private void setDrawerTabSectionVisible(boolean showFiles) {
+        findViewById(R.id.drawer_file_list_section).setVisibility(showFiles ? View.VISIBLE : View.GONE);
+        findViewById(R.id.drawer_install_buttons_section).setVisibility(showFiles ? View.GONE : View.VISIBLE);
+        // The directory switch buttons only apply to the file list tab.
+        int dirSwitchVisibility = showFiles ? View.VISIBLE : View.GONE;
+        findViewById(R.id.drawer_dir_switch_files_button).setVisibility(dirSwitchVisibility);
+        findViewById(R.id.drawer_dir_switch_external_files_button).setVisibility(dirSwitchVisibility);
+        findViewById(R.id.drawer_dir_switch_external_shared_button).setVisibility(dirSwitchVisibility);
     }
 
     /**
@@ -948,23 +1086,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /**
      * Sync the selected state of the three directory switch buttons with the current root tab.
-     * The active button is checked and shown in bold.
+     * The active button is checked (and shown filled) by the toggle group.
      */
     private void updateDirSwitchButtonStates() {
         if (mDrawerFileListRootDir == null) return;
         boolean isFiles = mDrawerFileListRootDir.equals(TermuxConstants.TERMUX_FILES_DIR);
         File externalFilesDir = getExternalFilesDir(null);
         boolean isExternalFiles = externalFilesDir != null && mDrawerFileListRootDir.equals(externalFilesDir);
-        boolean isExternalShared = mDrawerFileListRootDir.equals(Environment.getExternalStorageDirectory());
 
-        setDirSwitchButtonSelected(findViewById(R.id.drawer_dir_switch_files_button), isFiles);
-        setDirSwitchButtonSelected(findViewById(R.id.drawer_dir_switch_external_files_button), isExternalFiles);
-        setDirSwitchButtonSelected(findViewById(R.id.drawer_dir_switch_external_shared_button), isExternalShared);
-    }
-
-    private void setDirSwitchButtonSelected(MaterialButton button, boolean selected) {
-        button.setChecked(selected);
-        button.setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        int checkedId = isFiles ? R.id.drawer_dir_switch_files_button
+            : isExternalFiles ? R.id.drawer_dir_switch_external_files_button
+            : R.id.drawer_dir_switch_external_shared_button;
+        MaterialButtonToggleGroup toggleGroup = findViewById(R.id.drawer_dir_switch_toggle_group);
+        if (toggleGroup.getCheckedButtonId() != checkedId)
+            toggleGroup.check(checkedId);
     }
 
     /**

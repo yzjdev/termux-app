@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 会话编号徽标背景：选中态为白底，未选中态为深灰底 -->
+<!-- 会话编号徽标背景（正圆药丸）：选中态白底红字，未选中态半透明底灰字 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_selected="true">
-        <shape android:shape="rectangle">
+        <shape android:shape="oval">
             <solid android:color="@color/white" />
-            <corners android:radius="4dp" />
         </shape>
     </item>
     <item>
-        <shape android:shape="rectangle">
-            <solid android:color="@color/grey_800" />
-            <corners android:radius="4dp" />
+        <shape android:shape="oval">
+            <solid android:color="#33FFFFFF" />
         </shape>
     </item>
 </selector>

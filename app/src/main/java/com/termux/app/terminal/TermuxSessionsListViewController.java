@@ -2,6 +2,7 @@ package com.termux.app.terminal;
 
 import android.text.TextUtils;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -90,7 +91,7 @@ public class TermuxSessionsListViewController implements TabLayout.OnTabSelected
         if (sessionTitleView != null)
             sessionTitleView.setText(getSessionTitle(termuxSession));
 
-        TextView closeButton = customView.findViewById(R.id.terminal_session_tab_close);
+        ImageView closeButton = customView.findViewById(R.id.terminal_session_tab_close);
         if (closeButton != null)
             closeButton.setOnClickListener(v -> confirmCloseSession(termuxSession));
     }

@@ -104,10 +104,61 @@
                 android:orientation="vertical"
                 android:background="?attr/termuxActivityDrawerBackground">
 
-                <com.google.android.material.tabs.TabLayout
-                    android:id="@+id/drawer_tab_group"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="4dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/settings_button"
+                        style="@style/Widget.Material3.Button.IconButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:contentDescription="@string/action_open_settings"
+                        app:icon="@drawable/ic_settings"
+                        app:iconTint="?attr/termuxActivityDrawerImageTint" />
+
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/drawer_tab_group"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        app:selectionRequired="true"
+                        app:singleSelection="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/drawer_tab_files_button"
+                        style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="文件"
+                        android:textSize="12sp"
+                        app:icon="@drawable/ic_drawer_folder"
+                        app:iconSize="16dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/drawer_tab_commands_button"
+                        style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="快捷指令"
+                        android:textSize="12sp"
+                        app:icon="@drawable/ic_drawer_bolt"
+                        app:iconSize="16dp" />
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
+                </LinearLayout>
 
                 <FrameLayout
                     android:layout_width="match_parent"
@@ -137,7 +188,7 @@
                             android:ellipsize="start"
                             android:gravity="center_vertical"
                             android:singleLine="true"
-                            android:text="📁 文件"
+                            android:text="文件"
                             android:textColor="?attr/termuxActivityDrawerImageTint"
                             android:textSize="12sp" />
 
@@ -147,10 +198,14 @@
                             android:layout_width="wrap_content"
                             android:layout_height="36dp"
                             android:minHeight="0dp"
-                            android:paddingStart="12dp"
+                            android:paddingStart="8dp"
                             android:paddingEnd="12dp"
-                            android:text="⬆ 上级"
-                            android:textSize="12sp" />
+                            android:text="上级"
+                            android:textSize="12sp"
+                            app:icon="@drawable/ic_arrow_up"
+                            app:iconGravity="textStart"
+                            app:iconSize="16dp"
+                            app:iconTint="?attr/termuxActivityDrawerImageTint" />
                     </LinearLayout>
 
                     <View
@@ -181,10 +236,26 @@
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/drawer_quick_commands_view"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
                         android:clipToPadding="false"
                         android:overScrollMode="never"
                         android:paddingTop="4dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/drawer_quick_command_add_button"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_marginHorizontal="12dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="@string/action_add_quick_command"
+                        android:textColor="?attr/termuxActivityDrawerImageTint"
+                        android:textSize="14sp"
+                        app:icon="@drawable/ic_add"
+                        app:iconSize="16dp"
+                        app:iconTint="?attr/termuxActivityDrawerImageTint" />
                 </LinearLayout>
                 </FrameLayout>
 
@@ -207,58 +278,47 @@
                         android:overScrollMode="never"
                         android:scrollbars="none">
 
-                        <LinearLayout
+                        <com.google.android.material.button.MaterialButtonToggleGroup
+                            android:id="@+id/drawer_dir_switch_toggle_group"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:orientation="horizontal">
+                            app:selectionRequired="true"
+                            app:singleSelection="true">
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/drawer_dir_switch_files_button"
-                                style="@style/Widget.Material3.Button.TextButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
                                 android:layout_width="wrap_content"
                                 android:layout_height="36dp"
                                 android:minHeight="0dp"
-                                android:paddingStart="8dp"
-                                android:paddingEnd="8dp"
-                                android:text="📁 内部存储"
-                                android:textSize="12sp" />
+                                android:text="内部存储"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_drawer_folder"
+                                app:iconSize="16dp" />
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/drawer_dir_switch_external_files_button"
-                                style="@style/Widget.Material3.Button.TextButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
                                 android:layout_width="wrap_content"
                                 android:layout_height="36dp"
                                 android:minHeight="0dp"
-                                android:paddingStart="8dp"
-                                android:paddingEnd="8dp"
-                                android:text="📁 外部存储"
-                                android:textSize="12sp" />
+                                android:text="外部存储"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_drawer_folder"
+                                app:iconSize="16dp" />
 
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/drawer_dir_switch_external_shared_button"
-                                style="@style/Widget.Material3.Button.TextButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
                                 android:layout_width="wrap_content"
                                 android:layout_height="36dp"
                                 android:minHeight="0dp"
-                                android:paddingStart="8dp"
-                                android:paddingEnd="8dp"
-                                android:text="📁 共享存储"
-                                android:textSize="12sp" />
-                        </LinearLayout>
+                                android:text="共享存储"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_drawer_folder"
+                                app:iconSize="16dp" />
+                        </com.google.android.material.button.MaterialButtonToggleGroup>
                     </HorizontalScrollView>
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/settings_button"
-                        style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:contentDescription="@string/action_open_settings"
-                        app:icon="@drawable/ic_settings"
-                        app:iconTint="?attr/termuxActivityDrawerImageTint" />
                 </LinearLayout>
             </LinearLayout>
 

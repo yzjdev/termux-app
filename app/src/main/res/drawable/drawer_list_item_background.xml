@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 侧栏文件列表项背景：圆角、按压态微亮 -->
+<!-- 侧栏列表项背景（卡片）：12dp 圆角、按压态微亮 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <corners android:radius="10dp" />
+            <corners android:radius="12dp" />
             <solid android:color="@color/drawer_list_item_background_pressed" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="10dp" />
+            <corners android:radius="12dp" />
             <solid android:color="@color/drawer_list_item_background" />
         </shape>
     </item>
