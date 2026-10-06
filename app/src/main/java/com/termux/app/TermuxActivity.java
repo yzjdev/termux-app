@@ -82,6 +82,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.ViewPager;
@@ -96,6 +97,7 @@ import org.json.JSONException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -743,6 +745,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
             .setTitle(R.string.title_quick_commands)
             .setView(R.layout.dialog_floating_quick_commands)
+            .setNeutralButton(R.string.action_reset_quick_commands, null)
             .setNegativeButton(android.R.string.cancel, null)
             .create();
         dialog.show();
@@ -750,7 +753,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         RecyclerView list = dialog.findViewById(R.id.floating_quick_commands_view);
         if (list == null) return;
         list.setLayoutManager(new LinearLayoutManager(this));
-        list.setAdapter(new QuickCommandAdapter(dialog));
+        mQuickCommandListAdapter = new QuickCommandAdapter(dialog);
+        list.setAdapter(mQuickCommandListAdapter);
+        attachQuickCommandDragReorder(list, mQuickCommandListAdapter);
+
+        MaterialButton addButton = dialog.findViewById(R.id.floating_quick_command_add_button);
+        if (addButton != null) addButton.setOnClickListener(v -> showQuickCommandEditDialog(-1));
+
+        // The reset button should not dismiss the dialog: the list updates in place.
+        Button resetButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (resetButton != null) resetButton.setOnClickListener(v -> resetQuickCommands());
     }
 
     private void runInstallCommand(String command) {
@@ -1049,6 +1061,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setPositiveButton(android.R.string.yes, (dialog, id) -> {
                 mQuickCommands.remove(position);
                 saveQuickCommands();
+                refreshQuickCommandList();
             })
             .setNegativeButton(android.R.string.no, null).show();
     }
@@ -1095,10 +1108,60 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     saveQuickCommands();
                 }
                 dialog.dismiss();
+                refreshQuickCommandList();
             });
         });
         dialog.show();
     }
+
+    /** Refresh the quick commands list shown in the floating ball dialog, if it is open. */
+    private void refreshQuickCommandList() {
+        if (mQuickCommandListAdapter != null) mQuickCommandListAdapter.notifyDataSetChanged();
+    }
+
+    /** Attach long-press drag reordering to the quick commands list. */
+    private void attachQuickCommandDragReorder(RecyclerView list, QuickCommandAdapter adapter) {
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0) {
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder source,
+                                  @NonNull RecyclerView.ViewHolder target) {
+                adapter.onMove(source.getAdapterPosition(), target.getAdapterPosition());
+                return true;
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) { }
+
+            @Override
+            public boolean isLongPressDragEnabled() {
+                return true;
+            }
+
+            @Override
+            public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+                super.clearView(recyclerView, viewHolder);
+                // Persist the new order once the drag is released.
+                saveQuickCommands();
+            }
+        });
+        itemTouchHelper.attachToRecyclerView(list);
+    }
+
+    /** Reset the quick commands to the built-in defaults. */
+    private void resetQuickCommands() {
+        mQuickCommands.clear();
+        for (int i = 0; i < DEFAULT_COMMANDS.length; i++) {
+            mQuickCommands.add(new QuickCommand(DEFAULT_COMMANDS[i][0], DEFAULT_COMMANDS[i][1],
+                COMMAND_ICONS[i % COMMAND_ICONS.length]));
+        }
+        saveQuickCommands();
+        refreshQuickCommandList();
+    }
+
+    /** The adapter for the quick commands list shown in the floating ball dialog (null if closed). */
+    @Nullable
+    private QuickCommandAdapter mQuickCommandListAdapter;
 
     /**
      * Adapter for the quick commands list, used both by the drawer and the floating ball
@@ -1147,6 +1210,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         @Override
         public int getItemCount() {
             return mQuickCommands.size();
+        }
+
+        /** Move an item when the list is reordered by dragging. */
+        public void onMove(int fromPosition, int toPosition) {
+            Collections.swap(mQuickCommands, fromPosition, toPosition);
+            notifyItemMoved(fromPosition, toPosition);
+        }
+
+        /** Keep the item clicked state after a long press starts a drag. */
+        public boolean onItemLongPress(@NonNull RecyclerView.ViewHolder viewHolder) {
+            return true;
         }
 
         class CommandViewHolder extends RecyclerView.ViewHolder {

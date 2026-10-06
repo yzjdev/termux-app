@@ -122,6 +122,7 @@
     <string name="title_quick_command_failed">执行失败</string>
     <string name="msg_quick_command_exit_code">退出码：%1$d</string>
     <string name="action_add_quick_command">添加命令</string>
+    <string name="action_reset_quick_commands">重置</string>
 
     <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>
