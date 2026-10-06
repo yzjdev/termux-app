@@ -118,6 +118,11 @@ public class TermuxSession {
 
         }
 
+        // An explicit executable with the login flag still runs as a login shell (argv[0]
+        // prefixed with "-"), but without going through the `login` binary and its motd.
+        if (executionCommand.executable != null && executionCommand.isLoginShellCommand)
+            isLoginShell = true;
+
         // Setup command args
         String[] commandArgs = shellEnvironmentClient.setupShellCommandArguments(executionCommand.executable, executionCommand.arguments);
 

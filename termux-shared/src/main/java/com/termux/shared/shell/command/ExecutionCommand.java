@@ -198,6 +198,16 @@ public class ExecutionCommand {
     /** Whether to set {@link ExecutionCommand} shell environment. */
     public boolean setShellCommandShellEnvironment;
 
+    /** Whether the command should run as a login shell (argv[0] prefixed with "-") even when an
+     * explicit executable is set. When the executable is null, a login shell is always started
+     * via the `login` binary which also prints the motd; setting this flag allows a login shell
+     * without the motd by starting the shell binary directly. */
+    public boolean isLoginShellCommand;
+
+    /** Whether the session is shown only in an in-app overlay (the floating terminal panel) and
+     * must be excluded from the main interface's session/tab list. */
+    public boolean isFloatingPanelSession;
+
 
 
 

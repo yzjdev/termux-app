@@ -115,6 +115,12 @@
     <string name="quick_command_command_hint">要执行的 shell 命令</string>
     <string name="msg_quick_command_required">名称和命令不能为空</string>
     <string name="msg_confirm_delete_quick_command">确定删除「%1$s」吗？</string>
+    <string name="title_quick_command_running">正在执行…</string>
+    <string name="title_quick_commands">快捷指令</string>
+    <string name="title_quick_command_session_name">快捷命令</string>
+    <string name="title_quick_command_success">执行成功</string>
+    <string name="title_quick_command_failed">执行失败</string>
+    <string name="msg_quick_command_exit_code">退出码：%1$d</string>
     <string name="action_add_quick_command">添加命令</string>
 
     <string name="action_style_terminal">Style</string>

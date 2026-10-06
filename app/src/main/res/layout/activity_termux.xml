@@ -125,6 +125,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
+                        android:visibility="gone"
                         app:selectionRequired="true"
                         app:singleSelection="true">
 
@@ -137,17 +138,6 @@
                         android:text="文件"
                         android:textSize="12sp"
                         app:icon="@drawable/ic_drawer_folder"
-                        app:iconSize="16dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/drawer_tab_commands_button"
-                        style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                        android:layout_width="0dp"
-                        android:layout_height="36dp"
-                        android:layout_weight="1"
-                        android:text="快捷指令"
-                        android:textSize="12sp"
-                        app:icon="@drawable/ic_drawer_bolt"
                         app:iconSize="16dp" />
                     </com.google.android.material.button.MaterialButtonToggleGroup>
                 </LinearLayout>
@@ -217,38 +207,6 @@
                         android:overScrollMode="never" />
                 </LinearLayout>
 
-                <LinearLayout
-                    android:id="@+id/drawer_install_buttons_section"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical"
-                    android:paddingBottom="16dp"
-                    android:visibility="gone">
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/drawer_quick_commands_view"
-                        android:layout_width="match_parent"
-                        android:layout_height="0dp"
-                        android:layout_weight="1"
-                        android:clipToPadding="false"
-                        android:overScrollMode="never"
-                        android:paddingTop="4dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/drawer_quick_command_add_button"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="40dp"
-                        android:layout_marginHorizontal="12dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:text="@string/action_add_quick_command"
-                        android:textColor="?attr/termuxActivityDrawerImageTint"
-                        android:textSize="14sp"
-                        app:icon="@drawable/ic_add"
-                        app:iconSize="16dp"
-                        app:iconTint="?attr/termuxActivityDrawerImageTint" />
-                </LinearLayout>
                 </FrameLayout>
 
                 <LinearLayout
@@ -315,6 +273,33 @@
             </LinearLayout>
 
         </androidx.drawerlayout.widget.DrawerLayout>
+
+        <FrameLayout
+            android:id="@+id/floating_ball_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="120dp">
+
+            <FrameLayout
+                android:id="@+id/floating_ball"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/floating_ball_background"
+                android:elevation="8dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_drawer_bolt"
+                    app:tint="@color/white" />
+            </FrameLayout>
+        </FrameLayout>
 
     </RelativeLayout>
 

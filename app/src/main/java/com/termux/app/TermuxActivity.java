@@ -13,13 +13,17 @@ import android.content.ServiceConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.app.Dialog;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.Menu;
+import android.view.MotionEvent;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
@@ -37,6 +41,7 @@ import com.termux.R;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.terminal.TermuxActivityRootView;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
+import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
 import com.termux.shared.activities.ReportActivity;
 import com.termux.shared.activity.ActivityUtils;
@@ -51,6 +56,9 @@ import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.app.file.TextFileDetector;
 import com.termux.app.models.QuickCommand;
+import com.termux.shared.shell.command.ExecutionCommand;
+import com.termux.shared.termux.shell.TermuxShellManager;
+import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
@@ -220,11 +228,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private final DrawerFileListAdapter mDrawerFileListAdapter = new DrawerFileListAdapter();
 
     /**
-     * The adapter for the drawer quick commands list.
-     */
-    private final QuickCommandAdapter mQuickCommandAdapter = new QuickCommandAdapter();
-
-    /**
      * If between onResume() and onStop(). Note that only one session is in the foreground of the terminal view at the
      * time, so if the session causing a change is not in the foreground it should probably be treated as background.
      */
@@ -325,7 +328,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setNewSessionButtonView();
 
-        setDrawerInstallButtonsView();
+        setFloatingBallView();
 
         setDrawerTabView();
 
@@ -589,7 +592,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private void setTermuxSessionsListView() {
         TabLayout termuxSessionsTabLayout = findViewById(R.id.terminal_sessions_tab_layout);
-        mTermuxSessionListViewController = new TermuxSessionsListViewController(this, termuxSessionsTabLayout, mTermuxService.getTermuxSessions());
+        mTermuxSessionListViewController = new TermuxSessionsListViewController(this, termuxSessionsTabLayout,
+            getTermuxSessionsForTabList());
+    }
+
+    /** The sessions shown in the main interface's tab list; overlay-only sessions are excluded. */
+    private List<TermuxSession> getTermuxSessionsForTabList() {
+        List<TermuxSession> sessions = new ArrayList<>();
+        if (mTermuxService == null) return sessions;
+        for (TermuxSession termuxSession : mTermuxService.getTermuxSessions()) {
+            if (!termuxSession.getExecutionCommand().isFloatingPanelSession)
+                sessions.add(termuxSession);
+        }
+        return sessions;
     }
 
 
@@ -662,27 +677,278 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /**
-     * Set up the quick commands list in the left drawer. Each item opens the current
-     * terminal session and runs the command so the user can see the progress and result.
+     * Set up the floating ball overlay: it can be dragged anywhere on screen and a tap
+     * opens the quick commands dialog.
      */
-    private void setDrawerInstallButtonsView() {
+    private void setFloatingBallView() {
+        // Drag the container (a direct child of the root layout) so setX/setY coordinates are
+        // relative to the root layout itself; dragging the inner ball would mix coordinate
+        // systems since its parent only wraps the ball.
+        ViewGroup container = findViewById(R.id.floating_ball_container);
+        View ball = findViewById(R.id.floating_ball);
+
+        View.OnTouchListener listener = new View.OnTouchListener() {
+            private int pointerId = MotionEvent.INVALID_POINTER_ID;
+            private float downRawX, downRawY;
+            private float containerDownX, containerDownY;
+            private boolean dragged;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN: {
+                        pointerId = event.getPointerId(0);
+                        downRawX = event.getRawX();
+                        downRawY = event.getRawY();
+                        containerDownX = container.getX();
+                        containerDownY = container.getY();
+                        dragged = false;
+                        return true;
+                    }
+                    case MotionEvent.ACTION_MOVE: {
+                        // Only follow the pointer that started the drag, ignore extra fingers.
+                        if (event.findPointerIndex(pointerId) != 0) return true;
+                        float dx = event.getRawX() - downRawX;
+                        float dy = event.getRawY() - downRawY;
+                        if (dragged || Math.hypot(dx, dy) > 10f) {
+                            dragged = true;
+                            // Clamp inside the root layout so the ball cannot be dragged off screen.
+                            float maxX = ((View) container.getParent()).getWidth() - container.getWidth();
+                            float maxY = ((View) container.getParent()).getHeight() - container.getHeight();
+                            float newX = Math.max(0, Math.min(containerDownX + dx, maxX));
+                            float newY = Math.max(0, Math.min(containerDownY + dy, maxY));
+                            container.setX(newX);
+                            container.setY(newY);
+                        }
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (!dragged && event.getActionMasked() == MotionEvent.ACTION_UP)
+                            showFloatingQuickCommandsDialog();
+                        pointerId = MotionEvent.INVALID_POINTER_ID;
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        };
+        ball.setOnTouchListener(listener);
+    }
+
+    /** Show the quick commands list in a dialog (opened from the floating ball). */
+    private void showFloatingQuickCommandsDialog() {
         loadQuickCommands();
 
-        RecyclerView quickCommandsView = findViewById(R.id.drawer_quick_commands_view);
-        quickCommandsView.setLayoutManager(new LinearLayoutManager(this));
-        quickCommandsView.setAdapter(mQuickCommandAdapter);
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.title_quick_commands)
+            .setView(R.layout.dialog_floating_quick_commands)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create();
+        dialog.show();
 
-        MaterialButton addButton = findViewById(R.id.drawer_quick_command_add_button);
-        addButton.setOnClickListener(v -> showQuickCommandEditDialog(-1));
+        RecyclerView list = dialog.findViewById(R.id.floating_quick_commands_view);
+        if (list == null) return;
+        list.setLayoutManager(new LinearLayoutManager(this));
+        list.setAdapter(new QuickCommandAdapter(dialog));
     }
 
     private void runInstallCommand(String command) {
-        TerminalSession session = getCurrentSession();
-        if (session == null || !session.isRunning()) return;
-
-        // Run the command in the current session's shell instead of opening a new session.
-        session.write(command + "\r");
         getDrawer().closeDrawers();
+
+        if (mTermuxService == null) {
+            // Service not bound yet; fall back to typing the command into the current session.
+            TerminalSession session = getCurrentSession();
+            if (session != null && session.isRunning())
+                session.write(command + "\r");
+            return;
+        }
+
+        showFloatingTerminalPanel(command);
+    }
+
+    /** Show (or reuse) the in-app floating terminal panel and run the command in a dedicated
+     * session attached to its TerminalView. The panel is a plain overlay inside the activity
+     * layout, so no dialog window is involved and the main terminal is untouched.
+     */
+    private void showFloatingTerminalPanel(String command) {
+        RelativeLayout rootLayout = findViewById(R.id.activity_termux_root_relative_layout);
+        View panel = rootLayout.findViewById(R.id.floating_terminal_panel);
+
+        // The panel is fixed at the bottom, full width, and always exactly half the phone
+        // screen height - the root layout height is deliberately ignored so the on-screen
+        // keyboard shrinking it does not change the panel size.
+        int panelHeight = getResources().getDisplayMetrics().heightPixels / 2;
+        if (panel == null) {
+            panel = getLayoutInflater().inflate(R.layout.floating_terminal_panel, rootLayout, false);
+            RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, panelHeight);
+            params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+            rootLayout.addView(panel, params);
+
+            panel.findViewById(R.id.floating_terminal_close_button).setOnClickListener(v -> hideFloatingTerminalPanel());
+        } else {
+            // A reused panel keeps its previous size, so apply the fixed height again.
+            RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) panel.getLayoutParams();
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            params.height = panelHeight;
+            panel.setLayoutParams(params);
+        }
+
+        // Detach any previous command session still bound to the panel view.
+        TerminalView terminalView = panel.findViewById(R.id.floating_terminal_view);
+
+        // TerminalView requires a TerminalViewClient (e.g. onEmulatorSet is invoked right
+        // after attachSession), otherwise it crashes with a NullPointerException.
+        terminalView.setTerminalViewClient(new TerminalViewClient() {
+            @Override public void onSingleTapUp(MotionEvent e) { }
+            @Override public boolean shouldBackButtonBeMappedToEscape() { return false; }
+            @Override public boolean shouldEnforceCharBasedInput() { return false; }
+            @Override public boolean shouldUseCtrlSpaceWorkaround() { return false; }
+            @Override public boolean isTerminalViewSelected() { return false; }
+            @Override public void copyModeChanged(boolean copyMode) { }
+            @Override public boolean onKeyDown(int keyCode, KeyEvent e, TerminalSession session) { return false; }
+            @Override public boolean onKeyUp(int keyCode, KeyEvent e) { return false; }
+            @Override public boolean onLongPress(MotionEvent event) { return false; }
+            @Override public boolean readControlKey() { return false; }
+            @Override public boolean readAltKey() { return false; }
+            @Override public boolean readShiftKey() { return false; }
+            @Override public boolean readFnKey() { return false; }
+            @Override public boolean onCodePoint(int codePoint, boolean ctrlDown, TerminalSession session) { return false; }
+            @Override public float onScale(float scale) { return scale; }
+            @Override public void onEmulatorSet() { }
+            @Override public void logError(String tag, String message) { Logger.logError(tag, message); }
+            @Override public void logWarn(String tag, String message) { Logger.logWarn(tag, message); }
+            @Override public void logInfo(String tag, String message) { Logger.logInfo(tag, message); }
+            @Override public void logDebug(String tag, String message) { Logger.logDebug(tag, message); }
+            @Override public void logVerbose(String tag, String message) { Logger.logVerbose(tag, message); }
+            @Override public void logStackTraceWithMessage(String tag, String message, Exception e) { Logger.logStackTraceWithMessage(tag, message, e); }
+            @Override public void logStackTrace(String tag, Exception e) { Logger.logStackTrace(tag, e); }
+        });
+
+        // The panel view is newly inflated, so mRenderer is still null; initialize the renderer
+        // with the user's font size before attaching a session, otherwise updateSize() would
+        // crash reading mRenderer.mFontWidth.
+        terminalView.setTextSize(mPreferences.getFontSize());
+
+        // Run the command in the working directory of the current main terminal session,
+        // exactly like addNewSession() does.
+        TerminalSession currentSession = getCurrentSession();
+        String workingDirectory = (currentSession != null)
+            ? currentSession.getCwd() : null;
+
+        // Create a login shell session without going through the `login` binary (and its
+        // motd): pass the shell binary explicitly with the login flag, so argv[0] gets the
+        // "-" prefix and ~/.profile is loaded, but no startup banner is printed.
+        ExecutionCommand executionCommand = new ExecutionCommand(
+            TermuxShellManager.getNextShellId(),
+            TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/sh", null, null,
+            workingDirectory, ExecutionCommand.Runner.TERMINAL_SESSION.getName(), false);
+        executionCommand.shellName = getString(R.string.title_quick_command_session_name);
+        executionCommand.isLoginShellCommand = true;
+        executionCommand.isFloatingPanelSession = true;
+        TermuxSession termuxSession = mTermuxService.createTermuxSession(executionCommand);
+        if (termuxSession == null) return;
+
+        TerminalSession session = termuxSession.getTerminalSession();
+
+        // Show the working directory in the panel title while the command runs.
+        String dirDisplay = workingDirectory != null ? workingDirectory : "~";
+        TextView panelTitle = panel.findViewById(R.id.floating_terminal_title);
+        if (panelTitle != null) panelTitle.setText(dirDisplay);
+
+        // Forward callbacks to the activity client so the session behaves like any other
+        // session (tabs, session list), plus refresh the panel view and title.
+        session.updateTerminalSessionClient(new FloatingPanelSessionClient(mTermuxTerminalSessionActivityClient));
+        terminalView.attachSession(session);
+        panel.setVisibility(View.VISIBLE);
+        // The shell needs a moment to start; writing immediately can be swallowed before the
+        // pty reader is up, so retry until the session is running or a timeout elapses.
+        final TerminalSession pendingSession = session;
+        final String commandWithNewline = command + "\r";
+        final Handler handler = new Handler(getMainLooper());
+        final Runnable[] retry = new Runnable[1];
+        final long deadline = SystemClock.elapsedRealtime() + 3000;
+        retry[0] = new Runnable() {
+            @Override
+            public void run() {
+                if (pendingSession.isRunning() && pendingSession.getPid() > 0) {
+                    // Shell is up; run the command once.
+                    pendingSession.write(commandWithNewline);
+                } else if (SystemClock.elapsedRealtime() < deadline) {
+                    handler.postDelayed(retry[0], 200);
+                }
+            }
+        };
+        handler.postDelayed(retry[0], 200);
+    }
+
+    /** Hide the floating terminal panel and finish its current session if still running. */
+    private void hideFloatingTerminalPanel() {
+        RelativeLayout rootLayout = findViewById(R.id.activity_termux_root_relative_layout);
+        View panel = rootLayout.findViewById(R.id.floating_terminal_panel);
+        if (panel == null) return;
+        panel.setVisibility(View.GONE);
+        finishFloatingPanelSession(panel);
+    }
+
+    /** Finish the terminal session currently attached to the panel's view, if any. */
+    private void finishFloatingPanelSession(View panel) {
+        TerminalView terminalView = panel.findViewById(R.id.floating_terminal_view);
+        TerminalSession session = terminalView.getCurrentSession();
+        if (session != null && session.isRunning()) session.finishIfRunning();
+    }
+
+    /**
+     * {@link TerminalSessionClient} for the session shown in the floating terminal panel.
+     * Delegates everything to the shared activity client so the session behaves like any
+     * normal session (tabs, session list, ...), and additionally refreshes the panel's
+     * TerminalView and title.
+     */
+    private class FloatingPanelSessionClient extends TermuxTerminalSessionClientBase {
+
+        private final TermuxTerminalSessionActivityClient mActivityClient;
+        private final View mPanel;
+
+        FloatingPanelSessionClient(TermuxTerminalSessionActivityClient activityClient) {
+            mActivityClient = activityClient;
+            mPanel = findViewById(R.id.floating_terminal_panel);
+        }
+
+        @Override
+        public void onTextChanged(@NonNull TerminalSession changedSession) {
+            mActivityClient.onTextChanged(changedSession);
+            TerminalView terminalView = mPanel.findViewById(R.id.floating_terminal_view);
+            if (terminalView != null && terminalView.getCurrentSession() == changedSession)
+                terminalView.onScreenUpdated();
+        }
+
+        @Override
+        public void onTitleChanged(@NonNull TerminalSession changedSession) {
+            mActivityClient.onTitleChanged(changedSession);
+        }
+
+        @Override
+        public void onSessionFinished(@NonNull TerminalSession finishedSession) {
+            mActivityClient.onSessionFinished(finishedSession);
+            runOnUiThread(() -> {
+                TextView title = mPanel.findViewById(R.id.floating_terminal_title);
+                if (title != null) {
+                    int exitCode = finishedSession.getExitStatus();
+                    title.setText(exitCode == 0 ? R.string.title_quick_command_success : R.string.title_quick_command_failed);
+                }
+            });
+        }
+
+        @Override
+        public void onColorsChanged(@NonNull TerminalSession session) {
+            mActivityClient.onColorsChanged(session);
+        }
+
+        @Override
+        public Integer getTerminalCursorStyle() {
+            return mActivityClient.getTerminalCursorStyle();
+        }
     }
 
     /** Key for the persisted quick commands JSON array in the activity preferences. */
@@ -783,7 +1049,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setPositiveButton(android.R.string.yes, (dialog, id) -> {
                 mQuickCommands.remove(position);
                 saveQuickCommands();
-                mQuickCommandAdapter.notifyItemRemoved(position);
             })
             .setNegativeButton(android.R.string.no, null).show();
     }
@@ -824,12 +1089,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (isNew) {
                     mQuickCommands.add(new QuickCommand(name, command, nextQuickCommandIcon()));
                     saveQuickCommands();
-                    mQuickCommandAdapter.notifyItemInserted(mQuickCommands.size() - 1);
                 } else {
                     quickCommand.name = name;
                     quickCommand.command = command;
                     saveQuickCommands();
-                    mQuickCommandAdapter.notifyItemChanged(position);
                 }
                 dialog.dismiss();
             });
@@ -838,10 +1101,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /**
-     * Adapter for the quick commands list in the left drawer. Each item is a row that
-     * runs its command in the current terminal session when tapped.
+     * Adapter for the quick commands list, used both by the drawer and the floating ball
+     * dialog. Each item is a row that runs its command when tapped.
      */
     private class QuickCommandAdapter extends RecyclerView.Adapter<QuickCommandAdapter.CommandViewHolder> {
+
+        /** When non-null, the dialog hosting this adapter's list; dismissed after actions. */
+        @Nullable
+        private final Dialog mHostDialog;
+
+        QuickCommandAdapter() {
+            this(null);
+        }
+
+        QuickCommandAdapter(@Nullable Dialog hostDialog) {
+            mHostDialog = hostDialog;
+        }
+
+        private void onActionDone() {
+            if (mHostDialog != null) mHostDialog.dismiss();
+        }
 
 
 
@@ -859,7 +1138,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             holder.textView.setText(quickCommand.name);
             holder.commandTextView.setText(quickCommand.command);
             holder.itemView.setOnClickListener(v -> showQuickCommandMenu(position));
-            holder.runButtonView.setOnClickListener(v -> runInstallCommand(quickCommand.command));
+            holder.runButtonView.setOnClickListener(v -> {
+                onActionDone();
+                runInstallCommand(quickCommand.command);
+            });
         }
 
         @Override
@@ -904,8 +1186,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setDrawerTabSectionVisible(boolean showFiles) {
-        findViewById(R.id.drawer_file_list_section).setVisibility(showFiles ? View.VISIBLE : View.GONE);
-        findViewById(R.id.drawer_install_buttons_section).setVisibility(showFiles ? View.GONE : View.VISIBLE);
+        findViewById(R.id.drawer_file_list_section).setVisibility(showFiles ? View.VISIBLE : View.VISIBLE);
         // The directory switch buttons only apply to the file list tab.
         int dirSwitchVisibility = showFiles ? View.VISIBLE : View.GONE;
         findViewById(R.id.drawer_dir_switch_files_button).setVisibility(dirSwitchVisibility);
@@ -1445,9 +1726,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
     public void termuxSessionListNotifyUpdated() {
-        if (mTermuxSessionListViewController != null && mTermuxService != null) {
-            mTermuxSessionListViewController.updateSessionList(mTermuxService.getTermuxSessions());
-        }
+        if (mTermuxSessionListViewController == null || mTermuxService == null) return;
+        mTermuxSessionListViewController.updateSessionList(getTermuxSessionsForTabList());
     }
 
     public boolean isVisible() {

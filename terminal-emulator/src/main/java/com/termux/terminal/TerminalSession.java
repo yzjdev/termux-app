@@ -68,6 +68,11 @@ public final class TerminalSession extends TerminalOutput {
     /** Set by the application for user identification of session, not by terminal. */
     public String mSessionName;
 
+    /** When true, the "[Process completed ... - press Enter]" message is not appended to the
+     * terminal after the process exits. Used for e.g. background command sessions where the
+     * user is not expected to interact further. */
+    public boolean mSuppressExitPrompt;
+
     final Handler mMainThreadHandler = new MainThreadHandler();
 
     private final String mShellPath;
@@ -350,19 +355,21 @@ public final class TerminalSession extends TerminalOutput {
                 int exitCode = (Integer) msg.obj;
                 cleanupResources(exitCode);
 
-                String exitDescription = "\r\n[Process completed";
-                if (exitCode > 0) {
-                    // Non-zero process exit.
-                    exitDescription += " (code " + exitCode + ")";
-                } else if (exitCode < 0) {
-                    // Negated signal.
-                    exitDescription += " (signal " + (-exitCode) + ")";
-                }
-                exitDescription += " - press Enter]";
+                if (!mSuppressExitPrompt) {
+                    String exitDescription = "\r\n[Process completed";
+                    if (exitCode > 0) {
+                        // Non-zero process exit.
+                        exitDescription += " (code " + exitCode + ")";
+                    } else if (exitCode < 0) {
+                        // Negated signal.
+                        exitDescription += " (signal " + (-exitCode) + ")";
+                    }
+                    exitDescription += " - press Enter]";
 
-                byte[] bytesToWrite = exitDescription.getBytes(StandardCharsets.UTF_8);
-                mEmulator.append(bytesToWrite, bytesToWrite.length);
-                notifyScreenUpdate();
+                    byte[] bytesToWrite = exitDescription.getBytes(StandardCharsets.UTF_8);
+                    mEmulator.append(bytesToWrite, bytesToWrite.length);
+                    notifyScreenUpdate();
+                }
 
                 mClient.onSessionFinished(TerminalSession.this);
             }
