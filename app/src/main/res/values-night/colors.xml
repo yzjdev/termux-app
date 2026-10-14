@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 侧栏列表项背景（卡片）。深色主题：浅淡白半透明底。 -->
-    <color name="drawer_list_item_background">#12FFFFFF</color>
-    <!-- Drawer list item pressed background. Dark theme: light translucent. -->
-    <color name="drawer_list_item_background_pressed">#1AFFFFFF</color>
+    <!-- 侧栏：卡片内列表项背景。深色主题：极淡白。 -->
+    <color name="drawer_list_item_background">#0DFFFFFF</color>
+    <!-- Drawer list item pressed background. Dark theme: faint white. -->
+    <color name="drawer_list_item_background_pressed">#1FFFFFFF</color>
     <!-- Drawer section title color. Dark theme: semi-transparent white. -->
     <color name="drawer_section_title">#99FFFFFF</color>
+
+    <!-- 侧栏整体背景渐变（手风琴容器外）。深色主题：深灰到近黑。 -->
+    <color name="drawer_background_start">#17171C</color>
+    <color name="drawer_background_end">#0E0E12</color>
+    <!-- 手风琴分组卡片背景。深色主题：略亮深灰。 -->
+    <color name="drawer_section_card_background">#1E1E24</color>
+    <!-- 手风琴分组卡片描边。深色主题：淡白。 -->
+    <color name="drawer_section_card_stroke">#1AFFFFFF</color>
+    <!-- 分组标题图标圆角容器背景。深色主题：深灰。 -->
+    <color name="drawer_icon_chip_background">#26262E</color>
+    <!-- 侧栏图标/文字主色。深色主题：近白。 -->
+    <color name="drawer_icon_tint">#F2F2F7</color>
 </resources>

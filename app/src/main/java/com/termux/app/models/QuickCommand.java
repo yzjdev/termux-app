@@ -12,11 +12,22 @@ public class QuickCommand {
     public String command;
     /** Resource id of the icon shown for this entry; reused from the built-in icon pool. */
     public int iconRes;
+    /** Whether running this command shows the floating terminal panel; otherwise it runs as a background task. */
+    public boolean useFloatingTerminal;
+    /** Whether a toast popup shows the background task's exit result after it finishes. */
+    public boolean notifyResult;
 
     public QuickCommand(String name, String command, int iconRes) {
+        this(name, command, iconRes, false, false);
+    }
+
+    public QuickCommand(String name, String command, int iconRes,
+                        boolean useFloatingTerminal, boolean notifyResult) {
         this.name = name;
         this.command = command;
         this.iconRes = iconRes;
+        this.useFloatingTerminal = useFloatingTerminal;
+        this.notifyResult = notifyResult;
     }
 
     public JSONObject toJson() {
@@ -25,6 +36,8 @@ public class QuickCommand {
             json.put("name", name);
             json.put("command", command);
             json.put("iconRes", iconRes);
+            json.put("useFloatingTerminal", useFloatingTerminal);
+            json.put("notifyResult", notifyResult);
         } catch (JSONException e) {
             // Should not happen since values are simple types.
         }
@@ -35,6 +48,8 @@ public class QuickCommand {
         return new QuickCommand(
             json.optString("name", ""),
             json.optString("command", ""),
-            json.optInt("iconRes", 0));
+            json.optInt("iconRes", 0),
+            json.optBoolean("useFloatingTerminal", false),
+            json.optBoolean("notifyResult", false));
     }
 }

@@ -25,6 +25,9 @@ public class ExtraKeyButton {
     /** The key name for the nested dict to define popup extra key info if using a dict to define the extra key. {popup: {key: name, ...}, ...} */
     public static final String KEY_POPUP = "popup";
 
+    /** The key name for the icon resource name of the extra key if using a dict to define the extra key. {icon: name, ...} */
+    public static final String KEY_ICON = "icon";
+
 
     /**
      * The key that will be sent to the terminal, either a control character, like defined in
@@ -41,6 +44,13 @@ public class ExtraKeyButton {
      * The text that will be displayed on the button.
      */
     private final String display;
+
+    /**
+     * The drawable resource name of the icon that will be displayed on the button instead of
+     * {@link #display}, or {@code null} if the button has no icon.
+     */
+    @Nullable
+    private final String icon;
 
     /**
      * The {@link ExtraKeyButton} containing the information of the popup button (triggered by swipe up).
@@ -109,6 +119,8 @@ public class ExtraKeyButton {
                 .collect(Collectors.joining(" "));
         }
 
+        this.icon = getStringFromJson(config, KEY_ICON);
+
         this.popup = popup;
     }
 
@@ -133,6 +145,15 @@ public class ExtraKeyButton {
     /** Get {@link #display}. */
     public String getDisplay() {
         return display;
+    }
+
+    /**
+     * Get {@link #icon}, the drawable resource name to display on the button instead of
+     * {@link #display}, or {@code null} if the button has no icon.
+     */
+    @Nullable
+    public String getIcon() {
+        return icon;
     }
 
     /** Get {@link #popup}. */

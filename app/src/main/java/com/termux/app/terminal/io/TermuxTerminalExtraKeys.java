@@ -8,10 +8,12 @@ import androidx.annotation.NonNull;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
+import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.logger.Logger;
+import com.termux.shared.termux.extrakeys.ExtraKeyButton;
 import com.termux.shared.termux.extrakeys.ExtraKeysConstants;
 import com.termux.shared.termux.extrakeys.ExtraKeysInfo;
 import com.termux.shared.termux.settings.properties.TermuxPropertyConstants;
@@ -19,7 +21,9 @@ import com.termux.shared.termux.settings.properties.TermuxSharedProperties;
 import com.termux.shared.termux.terminal.io.TerminalExtraKeys;
 import com.termux.view.TerminalView;
 
+import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 
 public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
 
@@ -30,6 +34,9 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     final TermuxTerminalSessionActivityClient mTermuxTerminalSessionActivityClient;
 
     private static final String LOG_TAG = "TermuxTerminalExtraKeys";
+
+    /** The extra key value that opens the quick commands dialog from the terminal toolbar. */
+    private static final String EXTRA_KEY_QUICK_COMMAND = "QUICK_COMMAND";
 
     public TermuxTerminalExtraKeys(TermuxActivity activity, @NonNull TerminalView terminalView,
                                    TermuxTerminalViewClient termuxTerminalViewClient,
@@ -43,6 +50,32 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
         setExtraKeys();
     }
 
+
+    /**
+     * Append an extra row holding the quick commands button and an ENTER key, both shown as icons,
+     * to the extra keys matrix JSON, so the terminal toolbar gets a third row.
+     *
+     * @param extraKeysJson The extra keys JSON string, an array of arrays.
+     * @return The extra keys JSON with the quick commands row appended.
+     */
+    private String appendQuickCommandRow(String extraKeysJson) throws JSONException {
+        JSONArray matrix = new JSONArray(extraKeysJson);
+
+        JSONObject quickCommandButton = new JSONObject();
+        quickCommandButton.put(ExtraKeyButton.KEY_KEY_NAME, EXTRA_KEY_QUICK_COMMAND);
+        quickCommandButton.put(ExtraKeyButton.KEY_DISPLAY_NAME, mActivity.getString(R.string.title_quick_commands));
+        quickCommandButton.put(ExtraKeyButton.KEY_ICON, "ic_extra_key_quick_command");
+
+        JSONObject enterButton = new JSONObject();
+        enterButton.put(ExtraKeyButton.KEY_KEY_NAME, "ENTER");
+        enterButton.put(ExtraKeyButton.KEY_ICON, "ic_extra_key_enter");
+
+        JSONArray row = new JSONArray();
+        row.put(quickCommandButton);
+        row.put(enterButton);
+        matrix.put(row);
+        return matrix.toString();
+    }
 
     /**
      * Set the terminal extra keys and style.
@@ -63,13 +96,13 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 extraKeysStyle = TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE;
             }
 
-            mExtraKeysInfo = new ExtraKeysInfo(extrakeys, extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+            mExtraKeysInfo = new ExtraKeysInfo(appendQuickCommandRow(extrakeys), extraKeysStyle, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
         } catch (JSONException e) {
             Logger.showToast(mActivity, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: " + e.toString(), true);
             Logger.logStackTraceWithMessage(LOG_TAG, "Could not load and set the \"" + TermuxPropertyConstants.KEY_EXTRA_KEYS + "\" property from the properties file: ", e);
 
             try {
-                mExtraKeysInfo = new ExtraKeysInfo(TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS, TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
+                mExtraKeysInfo = new ExtraKeysInfo(appendQuickCommandRow(TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS), TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE, ExtraKeysConstants.CONTROL_CHARS_ALIASES);
             } catch (JSONException e2) {
                 Logger.showToast(mActivity, "Can't create default extra keys",true);
                 Logger.logStackTraceWithMessage(LOG_TAG, "Could create default extra keys: ", e);
@@ -85,7 +118,9 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     @SuppressLint("RtlHardcoded")
     @Override
     public void onTerminalExtraKeyButtonClick(View view, String key, boolean ctrlDown, boolean altDown, boolean shiftDown, boolean fnDown) {
-        if ("KEYBOARD".equals(key) || "keyb".equals(key)) {
+        if (EXTRA_KEY_QUICK_COMMAND.equals(key)) {
+            mActivity.showQuickCommandsDialog();
+        } else if ("KEYBOARD".equals(key) || "keyb".equals(key)) {
             if(mTermuxTerminalViewClient != null)
                 mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
         } else if ("DRAWER".equals(key)) {

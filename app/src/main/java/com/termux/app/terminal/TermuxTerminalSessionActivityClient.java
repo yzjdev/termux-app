@@ -42,7 +42,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     private final TermuxActivity mActivity;
 
-    private static final int MAX_SESSIONS = 8;
+    private static final int MAX_SESSIONS = 16;
 
     private SoundPool mBellSoundPool;
 
@@ -116,8 +116,10 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
     @Override
     public void onTextChanged(@NonNull TerminalSession changedSession) {
-        if (!mActivity.isVisible()) return;
-
+        // 不做 isVisible() 早退：从后台切回的瞬间 onStop 已把 mIsVisible 置 false，
+        // 此时到达的终端回显若被跳过，视图会一直停在旧帧，用户输入的文本要等
+        // 下次 onStart() 强制刷新时才渲染出来。对已停止的窗口调用 invalidate()
+        // 是无害的，且能保证视图始终与会话缓冲区同步。
         if (mActivity.getCurrentSession() == changedSession) mActivity.getTerminalView().onScreenUpdated();
     }
 
@@ -341,7 +343,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         TermuxService service = mActivity.getTermuxService();
         if (service == null) return;
 
-        if (service.getTermuxSessionsSize() >= MAX_SESSIONS) {
+        if (service.getNonFloatingPanelSessionsSize() >= MAX_SESSIONS) {
             new AlertDialog.Builder(mActivity).setTitle(R.string.title_max_terminals_reached).setMessage(R.string.msg_max_terminals_reached)
                 .setPositiveButton(android.R.string.ok, null).show();
         } else {

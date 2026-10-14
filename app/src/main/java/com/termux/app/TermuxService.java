@@ -50,7 +50,9 @@ import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A service holding a list of {@link TermuxSession} in {@link TermuxShellManager#mTermuxSessions} and background {@link AppShell}
@@ -104,6 +106,20 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     /** If the user has executed the {@link TERMUX_SERVICE#ACTION_STOP_SERVICE} intent. */
     boolean mWantsToStop = false;
+
+    /** Callback invoked on the main thread when a registered background task (AppShell) finishes. */
+    public interface AppShellResultCallback {
+        void onAppShellResult(int shellId, Integer exitCode, String stdout, String stderr);
+    }
+
+    private final Map<Integer, AppShellResultCallback> mAppShellResultCallbacks = new HashMap<>();
+
+    /** Register a callback for the background task started with the given shell id. */
+    public void registerAppShellResultCallback(int shellId, AppShellResultCallback callback) {
+        synchronized (mAppShellResultCallbacks) {
+            mAppShellResultCallbacks.put(shellId, callback);
+        }
+    }
 
     private static final String LOG_TAG = "TermuxService";
 
@@ -517,6 +533,19 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                     TermuxPluginUtils.processPluginExecutionCommandResult(this, LOG_TAG, executionCommand);
 
                 mShellManager.mTermuxTasks.remove(termuxTask);
+
+                // Notify listeners (e.g. quick command loading/result popups) registered for this task.
+                if (executionCommand != null && executionCommand.id != null) {
+                    AppShellResultCallback callback;
+                    synchronized (mAppShellResultCallbacks) {
+                        callback = mAppShellResultCallbacks.remove(executionCommand.id);
+                    }
+                    if (callback != null)
+                        callback.onAppShellResult(executionCommand.id,
+                            executionCommand.resultData.exitCode,
+                            executionCommand.resultData.stdout.toString(),
+                            executionCommand.resultData.stderr.toString());
+                }
             }
 
             updateNotification();
@@ -787,8 +816,13 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         PendingIntent contentIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
 
 
-        // Set notification text
+        // Set notification text. Sessions used by the floating terminal panel are excluded: they are
+        // temporary and not shown in the session tab list, and they linger until the panel is closed,
+        // otherwise the count keeps growing with every quick command run.
         int sessionCount = getTermuxSessionsSize();
+        for (TermuxSession termuxSession : mShellManager.mTermuxSessions)
+            if (termuxSession.getExecutionCommand().isFloatingPanelSession)
+                sessionCount--;
         int taskCount = mShellManager.mTermuxTasks.size();
         String notificationText = sessionCount + " session" + (sessionCount == 1 ? "" : "s");
         if (taskCount > 0) {
@@ -876,6 +910,15 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     public synchronized int getTermuxSessionsSize() {
         return mShellManager.mTermuxSessions.size();
+    }
+
+    /** Count of sessions excluding those used by the floating terminal panel (quick command sessions). */
+    public synchronized int getNonFloatingPanelSessionsSize() {
+        int count = 0;
+        for (TermuxSession termuxSession : mShellManager.mTermuxSessions)
+            if (!termuxSession.getExecutionCommand().isFloatingPanelSession)
+                count++;
+        return count;
     }
 
     public synchronized List<TermuxSession> getTermuxSessions() {

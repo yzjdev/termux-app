@@ -104,202 +104,300 @@
                 android:orientation="vertical"
                 android:background="?attr/termuxActivityDrawerBackground">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingEnd="12dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/settings_button"
-                        style="@style/Widget.Material3.Button.IconButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:contentDescription="@string/action_open_settings"
-                        app:icon="@drawable/ic_settings"
-                       />
-
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/drawer_tab_group"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:visibility="gone"
-                        app:selectionRequired="true"
-                        app:singleSelection="true">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/drawer_tab_files_button"
-                        style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                        android:layout_width="0dp"
-                        android:layout_height="36dp"
-                        android:layout_weight="1"
-                        android:text="文件"
-                        android:textSize="12sp"
-                        app:icon="@drawable/ic_drawer_folder"
-                        app:iconSize="16dp" />
-                    </com.google.android.material.button.MaterialButtonToggleGroup>
-                </LinearLayout>
-
-                <FrameLayout
+                <!-- 三个存储目录竖向排列，各自是独立收展的手风琴卡片（可同时展开）。 -->
+                <ScrollView
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
-                    android:layout_weight="1">
-
-                <LinearLayout
-                    android:id="@+id/drawer_file_list_section"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical">
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:overScrollMode="never">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:paddingTop="8dp"
-                        android:paddingBottom="4dp">
+                        android:orientation="vertical">
 
-                        <TextView
-                            android:id="@+id/drawer_file_list_title"
-                            android:layout_width="0dp"
-                            android:layout_height="36dp"
-                            android:layout_weight="1"
-                            android:ellipsize="start"
-                            android:gravity="center_vertical"
-                            android:singleLine="true"
-                            android:text="文件"
-                            android:textColor="?attr/termuxActivityDrawerImageTint"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/drawer_file_list_back_button"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="36dp"
-                            android:minHeight="0dp"
-                            android:paddingStart="8dp"
-                            android:paddingEnd="12dp"
-                            android:text="上级"
-                            android:textSize="12sp"
-                            app:icon="@drawable/ic_arrow_up"
-                            app:iconGravity="textStart"
-                            app:iconSize="16dp"
-                            app:iconTint="?attr/termuxActivityDrawerImageTint" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginStart="12dp"
-                        android:layout_marginEnd="12dp"
-                        android:layout_marginBottom="4dp"
-                        android:background="@color/drawer_section_title" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/drawer_file_list_view"
-                        android:layout_width="match_parent"
-                        android:layout_height="0dp"
-                        android:layout_weight="1"
-                        android:clipToPadding="false"
-                        android:overScrollMode="never" />
-                </LinearLayout>
-
-                </FrameLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
-                    android:paddingTop="8dp"
-                    android:paddingBottom="12dp">
-
-                    <HorizontalScrollView
-                        android:id="@+id/drawer_dir_switch_scroll_view"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fillViewport="false"
-                        android:overScrollMode="never"
-                        android:scrollbars="none">
-
-                        <com.google.android.material.button.MaterialButtonToggleGroup
-                            android:id="@+id/drawer_dir_switch_toggle_group"
-                            android:layout_width="wrap_content"
+                        <!-- 内部存储 -->
+                        <LinearLayout
+                            android:id="@+id/drawer_storage_card_files"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            app:selectionRequired="true"
-                            app:singleSelection="true">
+                            android:layout_marginBottom="10dp"
+                            android:background="@drawable/drawer_section_card_background"
+                            android:orientation="vertical">
 
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/drawer_dir_switch_files_button"
-                                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                                android:layout_width="wrap_content"
-                                android:layout_height="36dp"
-                                android:minHeight="0dp"
-                                android:text="内部存储"
-                                android:textSize="12sp"
-                                app:icon="@drawable/ic_drawer_folder"
-                                app:iconSize="16dp" />
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="56dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingStart="14dp"
+                                android:paddingEnd="10dp">
 
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/drawer_dir_switch_external_files_button"
-                                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                                android:layout_width="wrap_content"
-                                android:layout_height="36dp"
-                                android:minHeight="0dp"
-                                android:text="外部存储"
-                                android:textSize="12sp"
-                                app:icon="@drawable/ic_drawer_folder"
-                                app:iconSize="16dp" />
+                                <FrameLayout
+                                    android:layout_width="36dp"
+                                    android:layout_height="36dp"
+                                    android:background="@drawable/drawer_icon_chip_background">
 
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/drawer_dir_switch_external_shared_button"
-                                style="@style/Widget.Material3.Button.OutlinedButton.Icon"
-                                android:layout_width="wrap_content"
-                                android:layout_height="36dp"
-                                android:minHeight="0dp"
-                                android:text="共享存储"
-                                android:textSize="12sp"
-                                app:icon="@drawable/ic_drawer_folder"
-                                app:iconSize="16dp" />
-                        </com.google.android.material.button.MaterialButtonToggleGroup>
-                    </HorizontalScrollView>
-                </LinearLayout>
+                                    <ImageView
+                                        android:layout_width="20dp"
+                                        android:layout_height="20dp"
+                                        android:layout_gravity="center"
+                                        android:contentDescription="@null"
+                                        android:src="@drawable/ic_drawer_folder"
+                                        android:tint="?attr/termuxActivityDrawerImageTint" />
+                                </FrameLayout>
+
+                                <LinearLayout
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginStart="12dp"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:ellipsize="end"
+                                        android:singleLine="true"
+                                        android:text="内部存储"
+                                        android:textColor="?attr/termuxActivityDrawerImageTint"
+                                        android:textSize="15sp" />
+
+                                    <TextView
+                                        android:id="@+id/drawer_storage_path_files"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:ellipsize="start"
+                                        android:singleLine="true"
+                                        android:textColor="@color/drawer_section_title"
+                                        android:textSize="11sp" />
+                                </LinearLayout>
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/drawer_storage_back_button_files"
+                                    style="@style/Widget.Material3.Button.IconButton"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
+                                    android:contentDescription="@string/action_drawer_parent_dir"
+                                    app:icon="@drawable/ic_arrow_up"
+                                    app:iconSize="20dp"
+                                    app:iconTint="?attr/termuxActivityDrawerImageTint" />
+
+                                <ImageView
+                                    android:id="@+id/drawer_storage_expand_chevron_files"
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    android:layout_marginStart="2dp"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/ic_drawer_expand"
+                                    android:tint="@color/drawer_section_title" />
+                            </LinearLayout>
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/drawer_storage_list_view_files"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="8dp"
+                                android:clipToPadding="false"
+                                android:overScrollMode="never" />
+                        </LinearLayout>
+
+                        <!-- 外部存储 -->
+                        <LinearLayout
+                            android:id="@+id/drawer_storage_card_external_files"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="10dp"
+                            android:background="@drawable/drawer_section_card_background"
+                            android:orientation="vertical">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="56dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingStart="14dp"
+                                android:paddingEnd="10dp">
+
+                                <FrameLayout
+                                    android:layout_width="36dp"
+                                    android:layout_height="36dp"
+                                    android:background="@drawable/drawer_icon_chip_background">
+
+                                    <ImageView
+                                        android:layout_width="20dp"
+                                        android:layout_height="20dp"
+                                        android:layout_gravity="center"
+                                        android:contentDescription="@null"
+                                        android:src="@drawable/ic_drawer_folder"
+                                        android:tint="?attr/termuxActivityDrawerImageTint" />
+                                </FrameLayout>
+
+                                <LinearLayout
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginStart="12dp"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:ellipsize="end"
+                                        android:singleLine="true"
+                                        android:text="外部存储"
+                                        android:textColor="?attr/termuxActivityDrawerImageTint"
+                                        android:textSize="15sp" />
+
+                                    <TextView
+                                        android:id="@+id/drawer_storage_path_external_files"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:ellipsize="start"
+                                        android:singleLine="true"
+                                        android:textColor="@color/drawer_section_title"
+                                        android:textSize="11sp" />
+                                </LinearLayout>
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/drawer_storage_back_button_external_files"
+                                    style="@style/Widget.Material3.Button.IconButton"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
+                                    android:contentDescription="@string/action_drawer_parent_dir"
+                                    app:icon="@drawable/ic_arrow_up"
+                                    app:iconSize="20dp"
+                                    app:iconTint="?attr/termuxActivityDrawerImageTint" />
+
+                                <ImageView
+                                    android:id="@+id/drawer_storage_expand_chevron_external_files"
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    android:layout_marginStart="2dp"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/ic_drawer_expand"
+                                    android:tint="@color/drawer_section_title" />
+                            </LinearLayout>
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/drawer_storage_list_view_external_files"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="8dp"
+                                android:clipToPadding="false"
+                                android:overScrollMode="never" />
+                        </LinearLayout>
+
+                        <!-- 共享存储 -->
+                        <LinearLayout
+                            android:id="@+id/drawer_storage_card_external_shared"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/drawer_section_card_background"
+                            android:orientation="vertical">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="56dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingStart="14dp"
+                                android:paddingEnd="10dp">
+
+                                <FrameLayout
+                                    android:layout_width="36dp"
+                                    android:layout_height="36dp"
+                                    android:background="@drawable/drawer_icon_chip_background">
+
+                                    <ImageView
+                                        android:layout_width="20dp"
+                                        android:layout_height="20dp"
+                                        android:layout_gravity="center"
+                                        android:contentDescription="@null"
+                                        android:src="@drawable/ic_drawer_folder"
+                                        android:tint="?attr/termuxActivityDrawerImageTint" />
+                                </FrameLayout>
+
+                                <LinearLayout
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginStart="12dp"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:ellipsize="end"
+                                        android:singleLine="true"
+                                        android:text="共享存储"
+                                        android:textColor="?attr/termuxActivityDrawerImageTint"
+                                        android:textSize="15sp" />
+
+                                    <TextView
+                                        android:id="@+id/drawer_storage_path_external_shared"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:ellipsize="start"
+                                        android:singleLine="true"
+                                        android:textColor="@color/drawer_section_title"
+                                        android:textSize="11sp" />
+                                </LinearLayout>
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/drawer_storage_back_button_external_shared"
+                                    style="@style/Widget.Material3.Button.IconButton"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
+                                    android:contentDescription="@string/action_drawer_parent_dir"
+                                    app:icon="@drawable/ic_arrow_up"
+                                    app:iconSize="20dp"
+                                    app:iconTint="?attr/termuxActivityDrawerImageTint" />
+
+                                <ImageView
+                                    android:id="@+id/drawer_storage_expand_chevron_external_shared"
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    android:layout_marginStart="2dp"
+                                    android:contentDescription="@null"
+                                    android:src="@drawable/ic_drawer_expand"
+                                    android:tint="@color/drawer_section_title" />
+                            </LinearLayout>
+
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/drawer_storage_list_view_external_shared"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginBottom="8dp"
+                                android:clipToPadding="false"
+                                android:overScrollMode="never" />
+                        </LinearLayout>
+
+                    </LinearLayout>
+                </ScrollView>
+
+                <!-- 底部：设置按钮（图标 + 文字的胶囊按钮） -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/settings_button"
+                    style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:text="@string/action_drawer_settings"
+                    android:textSize="13sp"
+                    android:contentDescription="@string/action_open_settings"
+                    app:icon="@drawable/ic_settings"
+                    app:iconSize="20dp"
+                    app:iconTint="?attr/termuxActivityDrawerImageTint" />
             </LinearLayout>
 
         </androidx.drawerlayout.widget.DrawerLayout>
-
-        <FrameLayout
-            android:id="@+id/floating_ball_container"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentBottom="true"
-            android:layout_marginEnd="16dp"
-            android:layout_marginBottom="120dp">
-
-            <FrameLayout
-                android:id="@+id/floating_ball"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="@drawable/floating_ball_background"
-                android:elevation="8dp"
-                android:clickable="true"
-                android:focusable="true">
-
-                <ImageView
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_drawer_bolt"
-                    app:tint="@color/white" />
-            </FrameLayout>
-        </FrameLayout>
 
     </RelativeLayout>
 

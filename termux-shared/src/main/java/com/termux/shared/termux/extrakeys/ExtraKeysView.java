@@ -2,6 +2,7 @@ package com.termux.shared.termux.extrakeys;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.stream.Collectors;
 
+import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -413,6 +415,21 @@ public final class ExtraKeysView extends GridLayout {
                 button.setTextColor(mButtonTextColor);
                 button.setAllCaps(mButtonTextAllCaps);
                 button.setPadding(0, 0, 0, 0);
+
+                // A button that defines an icon shows the drawable instead of its text. The drawable
+                // is resolved by name from the app resources, so extra keys can reference any icon.
+                String iconName = buttonInfo.getIcon();
+                if (iconName != null) {
+                    int iconResId = getResources().getIdentifier(iconName, "drawable", getContext().getPackageName());
+                    if (iconResId != 0) {
+                        button.setText(null);
+                        button.setGravity(Gravity.CENTER);
+                        button.setIconResource(iconResId);
+                        button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+                        button.setIconPadding(0);
+                        button.setIconTint(ColorStateList.valueOf(mButtonTextColor));
+                    }
+                }
 
                 button.setOnClickListener(view -> {
                     performExtraKeyButtonHapticFeedback(view, buttonInfo, button);

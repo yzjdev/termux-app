@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分组标题左侧图标的圆角容器背景。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/drawer_icon_chip_background" />
+    <corners android:radius="12dp" />
+</shape>

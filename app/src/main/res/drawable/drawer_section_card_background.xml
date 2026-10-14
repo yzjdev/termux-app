@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手风琴分组卡片背景：大圆角 + 细描边。按压态整卡微亮。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="22dp" />
+            <solid android:color="@color/drawer_list_item_background_pressed" />
+            <stroke android:width="1dp" android:color="@color/drawer_section_card_stroke" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="22dp" />
+            <solid android:color="@color/drawer_section_card_background" />
+            <stroke android:width="1dp" android:color="@color/drawer_section_card_stroke" />
+        </shape>
+    </item>
+</selector>
