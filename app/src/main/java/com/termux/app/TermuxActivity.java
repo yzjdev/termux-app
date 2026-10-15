@@ -36,7 +36,6 @@ import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -669,6 +668,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         list.setAdapter(mQuickCommandListAdapter);
         attachQuickCommandDragReorder(list, mQuickCommandListAdapter);
 
+        // Cap the list height so a long command list cannot stretch the dialog over most of the
+        // screen; shorter lists still shrink-wrap their content.
+        final int maxListHeight = (int) (getResources().getDisplayMetrics().heightPixels * 0.45f);
+        list.post(() -> {
+            if (list.getHeight() <= maxListHeight) return;
+            ViewGroup.LayoutParams params = list.getLayoutParams();
+            params.height = maxListHeight;
+            list.setLayoutParams(params);
+        });
+
         MaterialButton addButton = dialog.findViewById(R.id.floating_quick_command_add_button);
         if (addButton != null) addButton.setOnClickListener(v -> showQuickCommandEditDialog(-1));
 
@@ -1042,13 +1051,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         View view = getLayoutInflater().inflate(R.layout.dialog_quick_command_edit, null);
         final EditText nameInput = view.findViewById(R.id.quick_command_name_input);
         final EditText commandInput = view.findViewById(R.id.quick_command_command_input);
-        final Switch useFloatingTerminalSwitch = view.findViewById(R.id.quick_command_use_floating_terminal);
-        final Switch notifyResultSwitch = view.findViewById(R.id.quick_command_notify_result);
         if (quickCommand != null) {
             nameInput.setText(quickCommand.name);
             commandInput.setText(quickCommand.command);
-            useFloatingTerminalSwitch.setChecked(quickCommand.useFloatingTerminal);
-            notifyResultSwitch.setChecked(quickCommand.notifyResult);
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
@@ -1068,14 +1073,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     return;
                 }
                 if (isNew) {
-                    mQuickCommands.add(new QuickCommand(name, command, nextQuickCommandIcon(),
-                        useFloatingTerminalSwitch.isChecked(), notifyResultSwitch.isChecked()));
+                    mQuickCommands.add(new QuickCommand(name, command, nextQuickCommandIcon()));
                     saveQuickCommands();
                 } else {
                     quickCommand.name = name;
                     quickCommand.command = command;
-                    quickCommand.useFloatingTerminal = useFloatingTerminalSwitch.isChecked();
-                    quickCommand.notifyResult = notifyResultSwitch.isChecked();
                     saveQuickCommands();
                 }
                 dialog.dismiss();
@@ -1176,6 +1178,41 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 onActionDone();
                 runInstallCommand(quickCommand);
             });
+
+            // Per-command execution switches live on the card itself so they can be changed without
+            // opening the edit dialog. The tint/background selectors key off the selected state.
+            bindQuickCommandToggle(holder.floatingTerminalToggleView,
+                holder.floatingTerminalToggleLabelView, quickCommand.useFloatingTerminal, true,
+                () -> {
+                    quickCommand.useFloatingTerminal = !quickCommand.useFloatingTerminal;
+                    saveQuickCommands();
+                    notifyItemChanged(position);
+                });
+            // 「结果提示」只对后台执行生效，悬浮终端模式下置灰，避免出现无意义的开关。
+            boolean notifyToggleEnabled = !quickCommand.useFloatingTerminal;
+            bindQuickCommandToggle(holder.notifyResultToggleView, holder.notifyResultToggleLabelView,
+                quickCommand.notifyResult, notifyToggleEnabled,
+                () -> {
+                    quickCommand.notifyResult = !quickCommand.notifyResult;
+                    saveQuickCommands();
+                    notifyItemChanged(position);
+                });
+        }
+
+        /** Apply the on/off state of a card toggle and route taps to the given action. */
+        private void bindQuickCommandToggle(ImageView toggleView, TextView labelView, boolean on,
+                                            boolean enabled, Runnable onToggle) {
+            // The tint selector keys off the selected state, so the icon and its label both turn
+            // black (the drawer primary color) when on and grey when off.
+            toggleView.setSelected(on);
+            labelView.setSelected(on);
+            toggleView.setEnabled(enabled);
+            labelView.setEnabled(enabled);
+            toggleView.setAlpha(enabled ? 1f : 0.35f);
+            labelView.setAlpha(enabled ? 1f : 0.35f);
+            View.OnClickListener listener = v -> onToggle.run();
+            toggleView.setOnClickListener(listener);
+            labelView.setOnClickListener(listener);
         }
 
         @Override
@@ -1200,6 +1237,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             final TextView commandTextView;
             final ImageView iconView;
             final ImageView runButtonView;
+            final ImageView floatingTerminalToggleView;
+            final TextView floatingTerminalToggleLabelView;
+            final ImageView notifyResultToggleView;
+            final TextView notifyResultToggleLabelView;
 
             CommandViewHolder(@NonNull View itemView) {
                 super(itemView);
@@ -1207,6 +1248,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 commandTextView = itemView.findViewById(R.id.quick_command_command_text);
                 iconView = itemView.findViewById(R.id.quick_command_icon);
                 runButtonView = itemView.findViewById(R.id.quick_command_run_button);
+                floatingTerminalToggleView = itemView.findViewById(R.id.quick_command_toggle_floating_terminal);
+                floatingTerminalToggleLabelView = itemView.findViewById(R.id.quick_command_toggle_floating_terminal_label);
+                notifyResultToggleView = itemView.findViewById(R.id.quick_command_toggle_notify_result);
+                notifyResultToggleLabelView = itemView.findViewById(R.id.quick_command_toggle_notify_result_label);
             }
         }
     }

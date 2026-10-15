@@ -37,17 +37,4 @@
         android:inputType="textMultiLine"
         android:minLines="2"
         android:maxLines="6" />
-
-    <Switch
-        android:id="@+id/quick_command_use_floating_terminal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/quick_command_use_floating_terminal" />
-
-    <Switch
-        android:id="@+id/quick_command_notify_result"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/quick_command_notify_result" />
 </LinearLayout>

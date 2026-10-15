@@ -18,4 +18,6 @@
     <color name="drawer_icon_chip_background">#26262E</color>
     <!-- 侧栏图标/文字主色。深色主题：近白。 -->
     <color name="drawer_icon_tint">#F2F2F7</color>
+    <!-- 快捷指令卡片上的开关图标：未开启态。深色主题：中灰。 -->
+    <color name="quick_command_toggle_inactive">#98989F</color>
 </resources>

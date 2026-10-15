@@ -67,8 +67,10 @@
     <string name="action_toggle_soft_keyboard">Keyboard</string>
 
     <!-- Quick Command Options -->
-    <string name="quick_command_use_floating_terminal">使用悬浮终端执行</string>
-    <string name="quick_command_notify_result">后台执行完成后弹窗提示结果</string>
+    <string name="quick_command_toggle_floating_terminal_hint">切换「使用悬浮终端执行」</string>
+    <string name="quick_command_toggle_notify_result_hint">切换「后台执行完成后弹窗提示结果」</string>
+    <string name="quick_command_toggle_floating_short">悬浮终端</string>
+    <string name="quick_command_toggle_notify_short">结果提示</string>
     <string name="msg_quick_command_running">正在执行：%1$s</string>
     <string name="msg_quick_command_success">执行成功</string>
     <string name="msg_quick_command_failed">执行失败（退出码 %1$d）：\n%2$s</string>

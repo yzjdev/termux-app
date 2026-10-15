@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 快捷指令卡片上的开关图标着色：开启时用侧栏主色（浅色主题近黑 / 深色主题近白），未开启时灰色。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="@color/drawer_icon_tint" />
+    <item android:color="@color/quick_command_toggle_inactive" />
+</selector>
