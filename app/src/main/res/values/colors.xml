@@ -26,4 +26,11 @@
     <color name="quick_command_overlay_item_background_pressed">#26FFFFFF</color>
     <color name="quick_command_overlay_title">#E6FFFFFF</color>
     <color name="quick_command_overlay_secondary">#99FFFFFF</color>
+    <!-- 悬浮面板内的分隔线与空状态提示：深色面板上的低对比辅助色。 -->
+    <color name="quick_command_overlay_divider">#1FFFFFFF</color>
+    <color name="quick_command_overlay_empty">#80FFFFFF</color>
+    <!-- 深色面板上开关选中态的圆形底片：低对比白色，衬托白色图标。 -->
+    <color name="quick_command_overlay_toggle_background">#2EFFFFFF</color>
+    <!-- 深色面板上的危险操作（删除）强调色。 -->
+    <color name="quick_command_overlay_danger">#FF8A80</color>
 </resources>

@@ -131,7 +131,13 @@
     <string name="title_quick_command_failed">执行失败</string>
     <string name="msg_quick_command_exit_code">退出码：%1$d</string>
     <string name="action_add_quick_command">添加命令</string>
-    <string name="msg_overlay_permission_required">悬浮终端需要「显示在其他应用上层」权限，请在设置中开启后重试</string>
+    <string name="action_run_quick_command">运行</string>
+    <string name="action_edit_quick_command">编辑</string>
+    <string name="action_delete_quick_command">删除</string>
+    <string name="action_rerun_floating_terminal">重新运行</string>
+    <string name="action_minimize_floating_terminal">最小化</string>
+    <string name="action_restore_floating_terminal">恢复悬浮终端</string>
+    <string name="msg_quick_commands_empty">还没有快捷指令，点击下方「添加命令」创建</string>
     <string name="action_reset_quick_commands">重置</string>
 
     <string name="action_style_terminal">Style</string>

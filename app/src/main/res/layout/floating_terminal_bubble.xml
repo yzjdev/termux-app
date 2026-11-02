@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮终端最小化后的贴边小球：点击恢复面板 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/floating_terminal_bubble"
+    android:layout_width="48dp"
+    android:layout_height="48dp"
+    android:background="@drawable/floating_terminal_bubble_background"
+    android:elevation="20dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <ImageView
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="center"
+        android:contentDescription="@string/action_restore_floating_terminal"
+        android:src="@drawable/ic_quick_command_floating_terminal"
+        app:tint="@color/white" />
+</FrameLayout>

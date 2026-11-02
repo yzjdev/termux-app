@@ -14,13 +14,11 @@ import android.content.res.ColorStateList;
 import android.content.SharedPreferences;
 import android.content.ServiceConnection;
 import android.net.Uri;
-import android.provider.Settings;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.SystemClock;
+import android.util.DisplayMetrics;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
@@ -29,11 +27,11 @@ import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -235,11 +233,32 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private float mTerminalToolbarDefaultHeight;
 
-    /** The system overlay window root view for the floating terminal panel, or null when closed. */
+    /** The in-app overlay view for the floating terminal panel, or null when closed. */
     private View mFloatingTerminalPanel;
+
+    /** Last command run in the floating terminal panel, used by its re-run button. */
+    @Nullable
+    private String mFloatingPanelCommand;
+
+    /** The minimized edge bubble of the floating terminal panel, or null when not minimized. */
+    private View mFloatingTerminalBubble;
+
+    /** Visual top edge the floating terminal panel returns to when restored; NaN when unset. */
+    private float mFloatingTerminalAnchorTop = Float.NaN;
+
+    /** Remembered dock side and top of the minimized bubble; NaN top until it has been docked. */
+    private boolean mFloatingTerminalBubbleDockRight;
+    private float mFloatingTerminalBubbleTop = Float.NaN;
 
     /** The system overlay window root view for the quick commands list, or null when closed. */
     private View mQuickCommandsOverlay;
+
+    /** The command being edited in the shared panel's add/edit page; null when adding a new one. */
+    @Nullable
+    private QuickCommand mEditingQuickCommand;
+
+    /** Position of the command whose action page (run/edit/delete) is shown, or -1 when none. */
+    private int mQuickCommandActionPosition = -1;
 
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
@@ -663,14 +682,34 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setNewSessionButtonClickListeners(findViewById(R.id.new_tab_session_button));
     }
 
-    /** Show the quick commands list in an in-app floating panel (opened from the terminal toolbar). */
+    /** The fixed width shared by the quick commands panel and its add/edit dialog: 90% of the
+     * screen width, capped so it does not stretch across large screens. */
+    private int getQuickCommandPanelWidth() {
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        return Math.min((int) (metrics.widthPixels * 0.9f), (int) (400 * metrics.density));
+    }
+
+    /** Show the quick commands panel (opened from the terminal toolbar). The same panel also
+     * hosts the add/edit form, so there is only ever one floating window on screen. */
     public void showQuickCommandsDialog() {
         loadQuickCommands();
-        if (mQuickCommandsOverlay != null) hideQuickCommandsOverlay();
+        if (mQuickCommandsOverlay != null) {
+            showQuickCommandsListPage();
+            refreshQuickCommandList();
+            return;
+        }
 
         mQuickCommandsOverlay = getLayoutInflater().inflate(R.layout.dialog_floating_quick_commands, null, false);
         mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_close_button)
-            .setOnClickListener(v -> hideQuickCommandsOverlay());
+            .setOnClickListener(v -> {
+                // On a subpage (add/edit form or the run/edit/delete actions) the close button
+                // steps back to the list first; only the list page actually closes the panel.
+                if (isQuickCommandsEditPageShown() || isQuickCommandsActionsPageShown()) {
+                    showQuickCommandsListPage();
+                } else {
+                    hideQuickCommandsOverlay();
+                }
+            });
         // The reset button should not close the overlay: the list updates in place.
         View resetButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
         if (resetButton != null) resetButton.setOnClickListener(v -> resetQuickCommands());
@@ -682,27 +721,163 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         list.setAdapter(mQuickCommandListAdapter);
         attachQuickCommandDragReorder(list, mQuickCommandListAdapter);
 
-        // Cap the list height so a long command list cannot stretch the overlay over most of the
-        // screen; shorter lists still shrink-wrap their content.
-        final int maxListHeight = (int) (getResources().getDisplayMetrics().heightPixels * 0.45f);
-        list.post(() -> {
-            if (list.getHeight() <= maxListHeight) return;
-            ViewGroup.LayoutParams params = list.getLayoutParams();
-            params.height = maxListHeight;
-            list.setLayoutParams(params);
-        });
-
         MaterialButton addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
-        if (addButton != null) addButton.setOnClickListener(v -> showQuickCommandEditDialog(-1));
+        if (addButton != null) addButton.setOnClickListener(v -> showQuickCommandEditPage(-1));
 
-        // Attach the overlay inside the activity content so it only shows within the app,
-        // centered like the former dialog, with a shrink-wrapped width.
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_edit_cancel_button)
+            .setOnClickListener(v -> showQuickCommandsListPage());
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_edit_ok_button)
+            .setOnClickListener(v -> saveQuickCommandFromEditPage());
+
+        // Actions page: the run/edit/delete menu for the tapped command, shown in this panel.
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_action_run)
+            .setOnClickListener(v -> runQuickCommandFromActionsPage());
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_action_edit)
+            .setOnClickListener(v -> editQuickCommandFromActionsPage());
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_action_delete)
+            .setOnClickListener(v -> deleteQuickCommandFromActionsPage());
+
+        // Attach the overlay inside the activity content so it only shows within the app.
+        // The list page uses a fixed size: 90% of the screen width (capped on large screens)
+        // and 60% of the screen height, so the list scrolls inside it. The edit page
+        // shrink-wraps its height instead.
         ViewGroup content = findViewById(android.R.id.content);
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            getQuickCommandPanelWidth(), getQuickCommandPanelListHeight());
         params.gravity = Gravity.CENTER;
         content.addView(mQuickCommandsOverlay, params);
         setupQuickCommandsOverlayDrag();
+        showQuickCommandsListPage();
+        refreshQuickCommandList();
+    }
+
+    /** Height of the shared panel while it shows the list; the edit page shrink-wraps instead. */
+    private int getQuickCommandPanelListHeight() {
+        return (int) (getResources().getDisplayMetrics().heightPixels * 0.6f);
+    }
+
+    /** Switch the shared panel to its list page (also used when leaving the edit page). */
+    private void showQuickCommandsListPage() {
+        if (mQuickCommandsOverlay == null) return;
+        hideQuickCommandKeyboard();
+        mEditingQuickCommand = null;
+        View listPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_list_page);
+        if (listPage != null) listPage.setVisibility(View.VISIBLE);
+        View editPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_edit_page);
+        if (editPage != null) editPage.setVisibility(View.GONE);
+        View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
+        if (actionsPage != null) actionsPage.setVisibility(View.GONE);
+        mQuickCommandActionPosition = -1;
+        TextView title = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_title);
+        if (title != null) title.setText(R.string.title_quick_commands);
+        View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
+        if (reset != null) reset.setVisibility(View.VISIBLE);
+        setQuickCommandsPanelHeight(getQuickCommandPanelListHeight());
+        clampOverlayTranslation(mQuickCommandsOverlay);
+    }
+
+    /** Hide the soft keyboard for the panel's inputs, e.g. when leaving the edit page. */
+    private void hideQuickCommandKeyboard() {
+        if (mQuickCommandsOverlay == null) return;
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm == null) return;
+        View focused = mQuickCommandsOverlay.findFocus();
+        if (focused != null) {
+            imm.hideSoftInputFromWindow(focused.getWindowToken(), 0);
+            focused.clearFocus();
+        }
+    }
+
+    /** Switch the shared panel to its add/edit page, keeping the same window and position. */
+    private void showQuickCommandEditPage(int position) {
+        if (mQuickCommandsOverlay == null) showQuickCommandsDialog();
+        if (mQuickCommandsOverlay == null) return;
+
+        final boolean isNew = position < 0 || position >= mQuickCommands.size();
+        mEditingQuickCommand = isNew ? null : mQuickCommands.get(position);
+
+        TextView title = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_title);
+        if (title != null)
+            title.setText(isNew ? R.string.title_add_quick_command : R.string.title_edit_quick_command);
+        View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
+        if (reset != null) reset.setVisibility(View.GONE);
+
+        EditText nameInput = mQuickCommandsOverlay.findViewById(R.id.quick_command_name_input);
+        EditText commandInput = mQuickCommandsOverlay.findViewById(R.id.quick_command_command_input);
+        nameInput.setText(isNew ? "" : mEditingQuickCommand.name);
+        commandInput.setText(isNew ? "" : mEditingQuickCommand.command);
+
+        View listPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_list_page);
+        if (listPage != null) listPage.setVisibility(View.GONE);
+        View editPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_edit_page);
+        if (editPage != null) editPage.setVisibility(View.VISIBLE);
+        View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
+        if (actionsPage != null) actionsPage.setVisibility(View.GONE);
+
+        setQuickCommandsPanelHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+        clampOverlayTranslation(mQuickCommandsOverlay);
+        // Do not request focus on the input fields: the page opens without the soft keyboard,
+        // which the user can bring up by tapping a field themselves.
+        nameInput.clearFocus();
+        commandInput.clearFocus();
+    }
+
+    /** Resize the shared panel to the given height. The panel is centered, so a height change
+     * would re-center it and move the top edge; instead the visual top edge is captured before
+     * the resize and restored afterwards, so switching pages only grows/shrinks downwards and
+     * the panel always stays anchored to the list page's top position. */
+    private void setQuickCommandsPanelHeight(int height) {
+        if (mQuickCommandsOverlay == null) return;
+        ViewGroup.LayoutParams params = mQuickCommandsOverlay.getLayoutParams();
+        if (params == null || params.height == height) return;
+
+        final View overlay = mQuickCommandsOverlay;
+        // Anchor on the current visual top (layout top + drag translation), i.e. the top the
+        // list page currently occupies.
+        final float anchorTop = overlay.getTop() + overlay.getTranslationY();
+        params.height = height;
+        overlay.setLayoutParams(params);
+        overlay.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            @Override
+            public void onLayoutChange(View v, int left, int top, int right, int bottom,
+                                       int oldLeft, int oldTop, int oldRight, int oldBottom) {
+                v.removeOnLayoutChangeListener(this);
+                if (v != mQuickCommandsOverlay) return;
+                // Centered gravity moves the top with the height; translate back so the top
+                // edge sits exactly where it was.
+                v.setTranslationY(anchorTop - v.getTop());
+                clampOverlayTranslation(v);
+            }
+        });
+    }
+
+    /** True when the shared panel is showing the add/edit page rather than the list. */
+    private boolean isQuickCommandsEditPageShown() {
+        if (mQuickCommandsOverlay == null) return false;
+        View editPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_edit_page);
+        return editPage != null && editPage.getVisibility() == View.VISIBLE;
+    }
+
+    /** Save the values entered on the panel's add/edit page and return to the list page. */
+    private void saveQuickCommandFromEditPage() {
+        if (mQuickCommandsOverlay == null) return;
+        EditText nameInput = mQuickCommandsOverlay.findViewById(R.id.quick_command_name_input);
+        EditText commandInput = mQuickCommandsOverlay.findViewById(R.id.quick_command_command_input);
+        String name = nameInput.getText().toString().trim();
+        String command = commandInput.getText().toString().trim();
+        if (name.isEmpty() || command.isEmpty()) {
+            Toast.makeText(this, R.string.msg_quick_command_required, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (mEditingQuickCommand == null) {
+            mQuickCommands.add(new QuickCommand(name, command, nextQuickCommandIcon()));
+        } else {
+            mEditingQuickCommand.name = name;
+            mEditingQuickCommand.command = command;
+        }
+        saveQuickCommands();
+        refreshQuickCommandList();
+        showQuickCommandsListPage();
     }
 
     /** Make the quick commands panel draggable by its title bar, within the activity content. */
@@ -729,6 +904,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                                 mStartTranslationX + event.getRawX() - mDownRawX);
                             mQuickCommandsOverlay.setTranslationY(
                                 mStartTranslationY + event.getRawY() - mDownRawY);
+                            clampOverlayTranslation(mQuickCommandsOverlay);
                         }
                         return true;
                     default:
@@ -738,35 +914,30 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
+    /** Clamp an overlay's translation so the whole view stays inside its parent (the screen). */
+    private void clampOverlayTranslation(@NonNull View overlay) {
+        View parent = (View) overlay.getParent();
+        if (parent == null) return;
+        float maxX = Math.max(0f, (parent.getWidth() - overlay.getWidth()) / 2f);
+        float maxY = Math.max(0f, (parent.getHeight() - overlay.getHeight()) / 2f);
+        overlay.setTranslationX(Math.max(-maxX, Math.min(maxX, overlay.getTranslationX())));
+        overlay.setTranslationY(Math.max(-maxY, Math.min(maxY, overlay.getTranslationY())));
+    }
+
     /** Close the quick commands overlay panel, if shown. */
     private void hideQuickCommandsOverlay() {
         View overlay = mQuickCommandsOverlay;
         if (overlay == null) return;
         mQuickCommandsOverlay = null;
         mQuickCommandListAdapter = null;
+        mEditingQuickCommand = null;
+        mQuickCommandActionPosition = -1;
         if (overlay.isAttachedToWindow()) {
             ViewGroup parent = (ViewGroup) overlay.getParent();
             if (parent != null) parent.removeView(overlay);
         }
     }
 
-    /** Ensure the "display over other apps" permission is granted; otherwise show a toast,
-     * send the user to the settings page and return false. */
-    private boolean ensureOverlayPermission() {
-        if (Settings.canDrawOverlays(this)) return true;
-        Toast.makeText(this, R.string.msg_overlay_permission_required, Toast.LENGTH_LONG).show();
-        try {
-            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:" + getPackageName())));
-        } catch (ActivityNotFoundException e) {
-            // Some devices only support the generic overlay settings screen.
-            try {
-                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION));
-            } catch (ActivityNotFoundException ignored) {
-            }
-        }
-        return false;
-    }
 
     private void runInstallCommand(QuickCommand quickCommand) {
         getDrawer().closeDrawers();
@@ -836,24 +1007,51 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /** Show (or reuse) the floating terminal panel and run the command in a dedicated
-     * session attached to its TerminalView. The panel is a real system overlay window
-     * added via WindowManager, so it requires the SYSTEM_ALERT_WINDOW ("display over
-     * other apps") permission; without it the user is sent to the settings page first.
+     * session attached to its TerminalView. The panel is an in-app overlay attached inside
+     * the activity content, so it is only visible while the app is in the foreground and
+     * never over other apps.
      */
     private void showFloatingTerminalPanel(String command) {
-        if (!ensureOverlayPermission()) return;
-
-        // The panel is fixed at the bottom, full width, and always exactly half the phone
-        // screen height.
+        // Fixed size: same width as the quick commands panel, half the screen height. The
+        // panel is centered instead of pinned to the bottom and can be dragged by its title bar.
+        int panelWidth = getQuickCommandPanelWidth();
         int panelHeight = getResources().getDisplayMetrics().heightPixels / 2;
+
+        mFloatingPanelCommand = command;
 
         if (mFloatingTerminalPanel == null) {
             mFloatingTerminalPanel = getLayoutInflater().inflate(R.layout.floating_terminal_panel, null, false);
             mFloatingTerminalPanel.findViewById(R.id.floating_terminal_close_button)
                 .setOnClickListener(v -> hideFloatingTerminalPanel());
+            mFloatingTerminalPanel.findViewById(R.id.floating_terminal_rerun_button)
+                .setOnClickListener(v -> rerunFloatingPanelCommand());
+            mFloatingTerminalPanel.findViewById(R.id.floating_terminal_minimize_button)
+                .setOnClickListener(v -> minimizeFloatingTerminalPanel());
         }
 
-        // Detach any previous command session still bound to the panel view.
+        // Attach the panel inside the activity content, like the quick commands overlay, so
+        // it only shows within the app and never on top of other apps. It stays focusable so
+        // the TerminalView can receive keyboard input.
+        if (mFloatingTerminalPanel.getParent() == null) {
+            ViewGroup content = findViewById(android.R.id.content);
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(panelWidth, panelHeight);
+            params.gravity = Gravity.CENTER;
+            content.addView(mFloatingTerminalPanel, params);
+            setupFloatingTerminalPanelDrag();
+        }
+        removeFloatingTerminalBubble();
+        mFloatingTerminalPanel.setVisibility(View.VISIBLE);
+
+        startFloatingPanelCommand(command);
+        // Re-shown panels return to the position they were anchored at before minimizing.
+        mFloatingTerminalPanel.post(this::applyFloatingTerminalAnchor);
+    }
+
+    /** Create a fresh session for the given command and attach it to the panel's TerminalView.
+     * The command runs via `sh -c`, so the session ends on its own once it finishes and the
+     * panel keeps showing the final output. */
+    private void startFloatingPanelCommand(String command) {
+        if (mFloatingTerminalPanel == null || mTermuxService == null) return;
         TerminalView terminalView = mFloatingTerminalPanel.findViewById(R.id.floating_terminal_view);
 
         // TerminalView requires a TerminalViewClient (e.g. onEmulatorSet is invoked right
@@ -884,9 +1082,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             @Override public void logStackTrace(String tag, Exception e) { Logger.logStackTrace(tag, e); }
         });
 
-        // The panel view is newly inflated, so mRenderer is still null; initialize the renderer
-        // with the user's font size before attaching a session, otherwise updateSize() would
-        // crash reading mRenderer.mFontWidth.
+        // The renderer starts out null, so initialize it with the user's font size before
+        // attaching a session, otherwise updateSize() would crash reading mRenderer.mFontWidth.
         terminalView.setTextSize(mPreferences.getFontSize());
 
         // Run the command in the working directory of the current main terminal session,
@@ -898,9 +1095,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Create a login shell session without going through the `login` binary (and its
         // motd): pass the shell binary explicitly with the login flag, so argv[0] gets the
         // "-" prefix and ~/.profile is loaded, but no startup banner is printed.
+        // The command is passed with `-c` instead of being typed into an interactive shell
+        // (and without appending `exit`), so the session ends on its own once the command
+        // finishes; the panel window itself stays open with the final output.
         ExecutionCommand executionCommand = new ExecutionCommand(
             TermuxShellManager.getNextShellId(),
-            TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/sh", null, null,
+            TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/sh", new String[]{"-c", command}, null,
             workingDirectory, ExecutionCommand.Runner.TERMINAL_SESSION.getName(), false);
         executionCommand.shellName = getString(R.string.title_quick_command_session_name);
         executionCommand.isLoginShellCommand = true;
@@ -910,67 +1110,246 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         TerminalSession session = termuxSession.getTerminalSession();
 
-        // Show the working directory in the panel title while the command runs.
-        String dirDisplay = workingDirectory != null ? workingDirectory : "~";
+        // Show the working directory in the panel title while the command runs, shortened so
+        // the home prefix reads as "~" and the meaningful tail stays visible.
         TextView panelTitle = mFloatingTerminalPanel.findViewById(R.id.floating_terminal_title);
-        if (panelTitle != null) panelTitle.setText(dirDisplay);
+        if (panelTitle != null) panelTitle.setText(getShortDisplayPath(workingDirectory));
 
         // Use a standalone client so the panel session shares nothing with the main
         // sessions (no tabs, no session list, no shared callbacks).
         session.updateTerminalSessionClient(new FloatingPanelSessionClient());
         terminalView.attachSession(session);
-
-        // Attach the panel as a real system overlay window on top of everything else.
-        // It stays focusable so the TerminalView can receive keyboard input.
-        if (mFloatingTerminalPanel.getParent() == null) {
-            WindowManager windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-            int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, panelHeight, type,
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                android.graphics.PixelFormat.TRANSLUCENT);
-            params.gravity = Gravity.BOTTOM;
-            windowManager.addView(mFloatingTerminalPanel, params);
-        }
-        // The shell needs a moment to start; writing immediately can be swallowed before the
-        // pty reader is up, so retry until the session is running or a timeout elapses.
-        final TerminalSession pendingSession = session;
-        final String commandWithNewline = command + "; exit\r";
-        final Handler handler = new Handler(getMainLooper());
-        final Runnable[] retry = new Runnable[1];
-        final long deadline = SystemClock.elapsedRealtime() + 3000;
-        retry[0] = new Runnable() {
-            @Override
-            public void run() {
-                if (pendingSession.isRunning() && pendingSession.getPid() > 0) {
-                    // Shell is up; run the command once.
-                    pendingSession.write(commandWithNewline);
-                } else if (SystemClock.elapsedRealtime() < deadline) {
-                    handler.postDelayed(retry[0], 200);
-                }
-            }
-        };
-        handler.postDelayed(retry[0], 200);
     }
 
-    /** Hide the floating terminal panel (remove the system overlay window) and finish
-     * its current session if still running. */
+    /** Shorten a working directory for display: null/empty and the Termux home become "~", and
+     * paths under home keep their "~/..." tail so long prefixes do not crowd the title bar. */
+    @NonNull
+    private String getShortDisplayPath(@Nullable String path) {
+        final String home = TermuxConstants.TERMUX_HOME_DIR_PATH;
+        if (path == null || path.isEmpty()) return "~";
+        if (path.equals(home)) return "~";
+        if (path.startsWith(home + "/")) return "~" + path.substring(home.length());
+        return path;
+    }
+
+    /** Re-run the last command in the panel with a fresh session. */
+    private void rerunFloatingPanelCommand() {
+        if (mFloatingTerminalPanel == null || mFloatingPanelCommand == null) return;
+        finishFloatingPanelSession(mFloatingTerminalPanel);
+        startFloatingPanelCommand(mFloatingPanelCommand);
+    }
+
+    /** Hide the floating terminal panel and finish its current session if still running. */
     private void hideFloatingTerminalPanel() {
+        removeFloatingTerminalBubble();
         View panel = mFloatingTerminalPanel;
         if (panel == null) return;
         mFloatingTerminalPanel = null;
         finishFloatingPanelSession(panel);
         if (panel.isAttachedToWindow()) {
-            WindowManager windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-            try {
-                windowManager.removeView(panel);
-            } catch (Exception e) {
-                // The window may already have been removed by the system.
-                Logger.logError(LOG_TAG, "Failed to remove floating terminal overlay: " + e.getMessage());
-            }
+            ViewGroup parent = (ViewGroup) panel.getParent();
+            if (parent != null) parent.removeView(panel);
         }
+    }
+
+    /** Shrink the floating terminal panel into a bubble docked to the nearest screen edge,
+     * remembering where the panel was so it can return to the same anchored position. */
+    private void minimizeFloatingTerminalPanel() {
+        if (mFloatingTerminalPanel == null) return;
+        mFloatingTerminalAnchorTop =
+            mFloatingTerminalPanel.getTop() + mFloatingTerminalPanel.getTranslationY();
+        mFloatingTerminalPanel.setVisibility(View.GONE);
+        showFloatingTerminalBubble();
+    }
+
+    /** Restore the floating terminal panel from its minimized bubble. */
+    private void restoreFloatingTerminalPanel() {
+        removeFloatingTerminalBubble();
+        if (mFloatingTerminalPanel == null) return;
+        mFloatingTerminalPanel.setVisibility(View.VISIBLE);
+        mFloatingTerminalPanel.post(this::applyFloatingTerminalAnchor);
+    }
+
+    /** Put the panel's top edge back at the anchored position, clamped to the screen. */
+    private void applyFloatingTerminalAnchor() {
+        if (mFloatingTerminalPanel == null || Float.isNaN(mFloatingTerminalAnchorTop)) return;
+        mFloatingTerminalPanel.setTranslationY(
+            mFloatingTerminalAnchorTop - mFloatingTerminalPanel.getTop());
+        clampOverlayTranslation(mFloatingTerminalPanel);
+    }
+
+    /** Show the circular bubble, docked to whichever screen edge the panel was closest to
+     * and vertically centered on the panel's anchored position. */
+    private void showFloatingTerminalBubble() {
+        if (mFloatingTerminalBubble != null || mFloatingTerminalPanel == null) return;
+        ViewGroup content = findViewById(android.R.id.content);
+        View bubble = getLayoutInflater().inflate(R.layout.floating_terminal_bubble, content, false);
+
+        float density = getResources().getDisplayMetrics().density;
+        int size = (int) (48 * density);
+        int margin = (int) (8 * density);
+        int parentWidth = content.getWidth();
+        int parentHeight = content.getHeight();
+        int panelHeight = mFloatingTerminalPanel.getHeight();
+
+        int topMargin;
+        boolean dockRight;
+        if (!Float.isNaN(mFloatingTerminalBubbleTop)) {
+            // Re-use the edge and vertical position the bubble was last docked at, so
+            // minimizing again keeps the bubble where the user left it.
+            dockRight = mFloatingTerminalBubbleDockRight;
+            topMargin = Math.max(margin,
+                Math.min(Math.round(mFloatingTerminalBubbleTop), parentHeight - size - margin));
+        } else {
+            int panelWidth = mFloatingTerminalPanel.getWidth();
+            float panelCenterX = mFloatingTerminalPanel.getLeft()
+                + mFloatingTerminalPanel.getTranslationX() + panelWidth / 2f;
+            float anchorTop = Float.isNaN(mFloatingTerminalAnchorTop)
+                ? (parentHeight - panelHeight) / 2f : mFloatingTerminalAnchorTop;
+            topMargin = (int) (anchorTop + panelHeight / 2f - size / 2f);
+            topMargin = Math.max(margin, Math.min(topMargin, parentHeight - size - margin));
+            dockRight = panelCenterX > parentWidth / 2f;
+        }
+        // Keep the panel's restore position in sync with the bubble it will be restored from.
+        mFloatingTerminalAnchorTop = topMargin + size / 2f - panelHeight / 2f;
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size);
+        params.gravity = Gravity.TOP | (dockRight ? Gravity.END : Gravity.START);
+        if (dockRight) params.rightMargin = margin;
+        else params.leftMargin = margin;
+        params.topMargin = topMargin;
+
+        bubble.setOnTouchListener(new View.OnTouchListener() {
+            private float mDownRawX, mDownRawY;
+            private boolean mDragging;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownRawX = event.getRawX();
+                        mDownRawY = event.getRawY();
+                        mDragging = false;
+                        return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = event.getRawX() - mDownRawX;
+                        float dy = event.getRawY() - mDownRawY;
+                        if (!mDragging) {
+                            int slop = ViewConfiguration.get(TermuxActivity.this)
+                                .getScaledTouchSlop();
+                            if (Math.hypot(dx, dy) <= slop) return true;
+                            mDragging = true;
+                        }
+                        v.setTranslationX(dx);
+                        v.setTranslationY(dy);
+                        clampFloatingTerminalBubble(v);
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                        if (mDragging) snapFloatingTerminalBubble(v);
+                        else restoreFloatingTerminalPanel();
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        if (mDragging) snapFloatingTerminalBubble(v);
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        });
+        mFloatingTerminalBubble = bubble;
+        content.addView(bubble, params);
+    }
+
+    /** Keep a dragged bubble fully inside its parent while the finger moves. */
+    private void clampFloatingTerminalBubble(@NonNull View bubble) {
+        View parent = (View) bubble.getParent();
+        if (parent == null) return;
+        float minX = -bubble.getLeft();
+        float maxX = parent.getWidth() - bubble.getWidth() - bubble.getLeft();
+        float minY = -bubble.getTop();
+        float maxY = parent.getHeight() - bubble.getHeight() - bubble.getTop();
+        bubble.setTranslationX(Math.max(minX, Math.min(maxX, bubble.getTranslationX())));
+        bubble.setTranslationY(Math.max(minY, Math.min(maxY, bubble.getTranslationY())));
+    }
+
+    /** After a drag, snap the bubble to the nearest screen edge and move the panel's anchor to
+     * match, so restoring the panel opens it next to where the bubble was dropped. */
+    private void snapFloatingTerminalBubble(@NonNull View bubble) {
+        View parent = (View) bubble.getParent();
+        if (parent == null) return;
+        int size = bubble.getWidth();
+        int margin = (int) (8 * getResources().getDisplayMetrics().density);
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+
+        float left = bubble.getLeft() + bubble.getTranslationX();
+        float top = bubble.getTop() + bubble.getTranslationY();
+        boolean dockLeft = left + size / 2f <= parentWidth / 2f;
+        int finalLeft = dockLeft ? margin : parentWidth - size - margin;
+        int finalTop = Math.max(margin,
+            Math.min(Math.round(top), parentHeight - size - margin));
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size);
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.leftMargin = finalLeft;
+        params.topMargin = finalTop;
+        bubble.setLayoutParams(params);
+        bubble.setTranslationX(0f);
+        bubble.setTranslationY(0f);
+
+        if (mFloatingTerminalPanel != null) {
+            mFloatingTerminalAnchorTop =
+                finalTop + size / 2f - mFloatingTerminalPanel.getHeight() / 2f;
+        }
+        // Remember the docked position so the next minimize puts the bubble back here.
+        mFloatingTerminalBubbleDockRight = !dockLeft;
+        mFloatingTerminalBubbleTop = finalTop;
+    }
+
+    /** Remove the minimized bubble, if present. */
+    private void removeFloatingTerminalBubble() {
+        View bubble = mFloatingTerminalBubble;
+        if (bubble == null) return;
+        mFloatingTerminalBubble = null;
+        if (bubble.isAttachedToWindow()) {
+            ViewGroup parent = (ViewGroup) bubble.getParent();
+            if (parent != null) parent.removeView(bubble);
+        }
+    }
+
+    /** Make the floating terminal panel draggable by its title bar, within the activity content. */
+    private void setupFloatingTerminalPanelDrag() {
+        if (mFloatingTerminalPanel == null) return;
+        View titleBar = mFloatingTerminalPanel.findViewById(R.id.floating_terminal_titlebar);
+        if (titleBar == null) return;
+        titleBar.setOnTouchListener(new View.OnTouchListener() {
+            private float mDownRawX, mDownRawY;
+            private float mStartTranslationX, mStartTranslationY;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        mDownRawX = event.getRawX();
+                        mDownRawY = event.getRawY();
+                        mStartTranslationX = mFloatingTerminalPanel.getTranslationX();
+                        mStartTranslationY = mFloatingTerminalPanel.getTranslationY();
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        if (mFloatingTerminalPanel != null) {
+                            mFloatingTerminalPanel.setTranslationX(
+                                mStartTranslationX + event.getRawX() - mDownRawX);
+                            mFloatingTerminalPanel.setTranslationY(
+                                mStartTranslationY + event.getRawY() - mDownRawY);
+                            clampOverlayTranslation(mFloatingTerminalPanel);
+                        }
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        });
     }
 
     /** Finish the terminal session currently attached to the panel's view, if any. */
@@ -1085,20 +1464,57 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /** Show the long-press menu for a quick command: run, edit or delete it. */
+    /** Show the run/edit/delete actions for the tapped command inside the shared panel. */
     private void showQuickCommandMenu(int position) {
         if (position < 0 || position >= mQuickCommands.size()) return;
-        final QuickCommand quickCommand = mQuickCommands.get(position);
-        final String[] actions = {"运行", "编辑", "删除"};
-        new AlertDialog.Builder(this).setTitle(quickCommand.name)
-            .setItems(actions, (dialog, which) -> {
-                if (which == 0) {
-                    runInstallCommand(quickCommand);
-                } else if (which == 1) {
-                    showQuickCommandEditDialog(position);
-                } else {
-                    showQuickCommandDeleteDialog(position);
-                }
-            }).show();
+        if (mQuickCommandsOverlay == null) showQuickCommandsDialog();
+        if (mQuickCommandsOverlay == null) return;
+
+        mQuickCommandActionPosition = position;
+        hideQuickCommandKeyboard();
+        TextView title = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_title);
+        if (title != null) title.setText(mQuickCommands.get(position).name);
+        View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
+        if (reset != null) reset.setVisibility(View.GONE);
+        View listPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_list_page);
+        if (listPage != null) listPage.setVisibility(View.GONE);
+        View editPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_edit_page);
+        if (editPage != null) editPage.setVisibility(View.GONE);
+        View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
+        if (actionsPage != null) actionsPage.setVisibility(View.VISIBLE);
+
+        setQuickCommandsPanelHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+        clampOverlayTranslation(mQuickCommandsOverlay);
+    }
+
+    /** True when the shared panel is showing the run/edit/delete action page. */
+    private boolean isQuickCommandsActionsPageShown() {
+        if (mQuickCommandsOverlay == null) return false;
+        View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
+        return actionsPage != null && actionsPage.getVisibility() == View.VISIBLE;
+    }
+
+    /** Run the command whose action page is shown, closing the panel first. */
+    private void runQuickCommandFromActionsPage() {
+        if (mQuickCommandActionPosition < 0 || mQuickCommandActionPosition >= mQuickCommands.size())
+            return;
+        QuickCommand quickCommand = mQuickCommands.get(mQuickCommandActionPosition);
+        hideQuickCommandsOverlay();
+        runInstallCommand(quickCommand);
+    }
+
+    /** Open the add/edit page for the command whose action page is shown. */
+    private void editQuickCommandFromActionsPage() {
+        if (mQuickCommandActionPosition < 0 || mQuickCommandActionPosition >= mQuickCommands.size())
+            return;
+        showQuickCommandEditPage(mQuickCommandActionPosition);
+    }
+
+    /** Ask for confirmation to delete the command whose action page is shown. */
+    private void deleteQuickCommandFromActionsPage() {
+        if (mQuickCommandActionPosition < 0 || mQuickCommandActionPosition >= mQuickCommands.size())
+            return;
+        showQuickCommandDeleteDialog(mQuickCommandActionPosition);
     }
 
     /** Confirm and delete the quick command at the given position. */
@@ -1111,95 +1527,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 mQuickCommands.remove(position);
                 saveQuickCommands();
                 refreshQuickCommandList();
+                // The deleted command no longer exists: leave its action page.
+                if (isQuickCommandsActionsPageShown()) showQuickCommandsListPage();
             })
             .setNegativeButton(android.R.string.no, null).show();
-    }
-
-    /**
-     * Show a dialog with name and command inputs. When position is negative a new command is
-     * appended to the list, otherwise the command at the position is updated.
-     */
-    private void showQuickCommandEditDialog(int position) {
-        final boolean isNew = position < 0 || position >= mQuickCommands.size();
-        final QuickCommand quickCommand = isNew ? null : mQuickCommands.get(position);
-
-        @SuppressLint("InflateParams")
-        View view = getLayoutInflater().inflate(R.layout.dialog_quick_command_edit, null);
-        final EditText nameInput = view.findViewById(R.id.quick_command_name_input);
-        final EditText commandInput = view.findViewById(R.id.quick_command_command_input);
-        if (quickCommand != null) {
-            nameInput.setText(quickCommand.name);
-            commandInput.setText(quickCommand.command);
-        }
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-            .setTitle(isNew ? R.string.title_add_quick_command : R.string.title_edit_quick_command)
-            .setView(view)
-            .setPositiveButton(android.R.string.ok, null)
-            .setNegativeButton(android.R.string.cancel, null);
-
-        final AlertDialog dialog = builder.create();
-        // When opened from the quick commands overlay, restyle the dialog to match the dark panel.
-        final boolean inOverlay = mQuickCommandsOverlay != null;
-        dialog.setOnShowListener(d -> {
-            if (inOverlay) applyOverlayEditDialogStyle(dialog, view);
-            Button okButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-            okButton.setOnClickListener(v -> {
-                String name = nameInput.getText().toString().trim();
-                String command = commandInput.getText().toString().trim();
-                if (name.isEmpty() || command.isEmpty()) {
-                    Toast.makeText(this, R.string.msg_quick_command_required, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (isNew) {
-                    mQuickCommands.add(new QuickCommand(name, command, nextQuickCommandIcon()));
-                    saveQuickCommands();
-                } else {
-                    quickCommand.name = name;
-                    quickCommand.command = command;
-                    saveQuickCommands();
-                }
-                dialog.dismiss();
-                refreshQuickCommandList();
-            });
-        });
-        dialog.show();
     }
 
     /** Refresh the quick commands list shown in the quick commands dialog, if it is open. */
     private void refreshQuickCommandList() {
         if (mQuickCommandListAdapter != null) mQuickCommandListAdapter.notifyDataSetChanged();
-    }
-
-    /** Recolor the add/edit quick command dialog for the dark quick commands overlay. */
-    private void applyOverlayEditDialogStyle(@NonNull AlertDialog dialog, @NonNull View view) {
-        int titleColor = ContextCompat.getColor(this, R.color.quick_command_overlay_title);
-        int secondaryColor = ContextCompat.getColor(this, R.color.quick_command_overlay_secondary);
-
-        android.view.Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(
-                ContextCompat.getDrawable(this, R.drawable.quick_command_overlay_dialog_background));
-            TextView titleView = window.findViewById(android.R.id.title);
-            if (titleView != null) titleView.setTextColor(titleColor);
-        }
-
-        TextView nameLabel = view.findViewById(R.id.quick_command_name_label);
-        TextView commandLabel = view.findViewById(R.id.quick_command_command_label);
-        if (nameLabel != null) nameLabel.setTextColor(secondaryColor);
-        if (commandLabel != null) commandLabel.setTextColor(secondaryColor);
-
-        EditText nameInput = view.findViewById(R.id.quick_command_name_input);
-        EditText commandInput = view.findViewById(R.id.quick_command_command_input);
-        nameInput.setTextColor(titleColor);
-        nameInput.setHintTextColor(secondaryColor);
-        commandInput.setTextColor(titleColor);
-        commandInput.setHintTextColor(secondaryColor);
-
-        Button okButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-        Button cancelButton = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-        if (okButton != null) okButton.setTextColor(titleColor);
-        if (cancelButton != null) cancelButton.setTextColor(secondaryColor);
+        if (mQuickCommandsOverlay == null) return;
+        View emptyView = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_empty);
+        if (emptyView != null)
+            emptyView.setVisibility(mQuickCommands.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
     /** Attach long-press drag reordering to the quick commands list. */
@@ -1286,11 +1626,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             View view = getLayoutInflater().inflate(R.layout.drawer_quick_command_item, parent, false);
             if (mForOverlay) {
                 applyOverlayItemStyle(view);
-                // Shrink-wrap the item so the overlay panel width follows its content
-                // instead of stretching to the full screen width.
-                ViewGroup.LayoutParams params = view.getLayoutParams();
-                params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
-                view.setLayoutParams(params);
+                // The panel now has a fixed width, so let each card fill it (the item layout
+                // uses match_parent) instead of shrink-wrapping to its content.
             }
             return new CommandViewHolder(view);
         }
@@ -1312,13 +1649,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             ((ImageView) itemView.findViewById(R.id.quick_command_icon)).setImageTintList(mainTint);
             ((ImageView) itemView.findViewById(R.id.quick_command_run_button)).setImageTintList(mainTint);
 
-            // The toggles keep a selected-state selector, but switch to a white-on-dark variant.
+            // The toggles keep a selected-state selector, but switch to a white-on-dark variant,
+            // including a dark chip behind the selected icon so the white glyph stays visible.
             ColorStateList toggleTint =
                 AppCompatResources.getColorStateList(context, R.color.quick_command_toggle_tint_overlay);
-            ((ImageView) itemView.findViewById(R.id.quick_command_toggle_floating_terminal)).setImageTintList(toggleTint);
+            ImageView floatingToggle =
+                itemView.findViewById(R.id.quick_command_toggle_floating_terminal);
+            floatingToggle.setImageTintList(toggleTint);
+            floatingToggle.setBackgroundResource(R.drawable.quick_command_toggle_background_overlay);
             TextView floatingLabel = itemView.findViewById(R.id.quick_command_toggle_floating_terminal_label);
             floatingLabel.setTextColor(toggleTint);
-            ((ImageView) itemView.findViewById(R.id.quick_command_toggle_notify_result)).setImageTintList(toggleTint);
+            ImageView notifyToggle = itemView.findViewById(R.id.quick_command_toggle_notify_result);
+            notifyToggle.setImageTintList(toggleTint);
+            notifyToggle.setBackgroundResource(R.drawable.quick_command_toggle_background_overlay);
             TextView notifyLabel = itemView.findViewById(R.id.quick_command_toggle_notify_result_label);
             notifyLabel.setTextColor(toggleTint);
         }
@@ -1721,6 +2064,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public void onBackPressed() {
         if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
             getDrawer().closeDrawers();
+        } else if (mFloatingTerminalPanel != null) {
+            // The panel is an in-app overlay now: close it before leaving the activity.
+            hideFloatingTerminalPanel();
+        } else if (mQuickCommandsOverlay != null
+            && (isQuickCommandsEditPageShown() || isQuickCommandsActionsPageShown())) {
+            // Inside the shared panel: leave the edit/actions page first, keep the panel open.
+            showQuickCommandsListPage();
+        } else if (mQuickCommandsOverlay != null) {
+            hideQuickCommandsOverlay();
         } else {
             finishActivityIfNotFinishing();
         }

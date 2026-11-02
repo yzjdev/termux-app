@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮面板标题栏：略浅于面板底色，上圆角与面板保持一致 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="#F0333333" />
-    <corners android:topLeftRadius="8dp" android:topRightRadius="8dp" />
+    <corners
+        android:topLeftRadius="14dp"
+        android:topRightRadius="14dp" />
 </shape>
