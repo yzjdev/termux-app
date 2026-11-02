@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮快捷指令弹窗内“添加/编辑命令”对话框背景：与面板同色系深色圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F2222222" />
+    <corners android:radius="16dp" />
+</shape>

@@ -72,8 +72,8 @@
     <string name="quick_command_toggle_floating_short">悬浮终端</string>
     <string name="quick_command_toggle_notify_short">结果提示</string>
     <string name="msg_quick_command_running">正在执行：%1$s</string>
-    <string name="msg_quick_command_success">执行成功</string>
-    <string name="msg_quick_command_failed">执行失败（退出码 %1$d）：\n%2$s</string>
+    <string name="msg_quick_command_success">执行成功：%1$s</string>
+    <string name="msg_quick_command_failed">执行失败：%1$s（退出码 %2$d）：\n%3$s</string>
 
     <!-- File Editor -->
     <string name="file_editor_action_save">保存</string>
@@ -131,6 +131,7 @@
     <string name="title_quick_command_failed">执行失败</string>
     <string name="msg_quick_command_exit_code">退出码：%1$d</string>
     <string name="action_add_quick_command">添加命令</string>
+    <string name="msg_overlay_permission_required">悬浮终端需要「显示在其他应用上层」权限，请在设置中开启后重试</string>
     <string name="action_reset_quick_commands">重置</string>
 
     <string name="action_style_terminal">Style</string>

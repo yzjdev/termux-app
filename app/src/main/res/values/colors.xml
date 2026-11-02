@@ -20,4 +20,10 @@
     <color name="drawer_icon_tint">#1C1C1E</color>
     <!-- 快捷指令卡片上的开关图标：未开启态。浅色主题：中灰。 -->
     <color name="quick_command_toggle_inactive">#8E8E93</color>
+
+    <!-- 悬浮快捷指令弹窗（深色背景）专用配色：浅色文字与微亮卡片，替代侧栏的浅色主题配色。 -->
+    <color name="quick_command_overlay_item_background">#14FFFFFF</color>
+    <color name="quick_command_overlay_item_background_pressed">#26FFFFFF</color>
+    <color name="quick_command_overlay_title">#E6FFFFFF</color>
+    <color name="quick_command_overlay_secondary">#99FFFFFF</color>
 </resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮快捷指令弹窗（深色背景）上的开关图标着色：开启时白色，未开启时灰色。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="@color/quick_command_overlay_title" />
+    <item android:color="@color/quick_command_toggle_inactive" />
+</selector>
