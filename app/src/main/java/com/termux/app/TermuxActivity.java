@@ -29,6 +29,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -86,6 +87,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -231,6 +233,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private int mNavBarHeight;
 
+    /** Top/bottom system bar insets from the last window insets dispatch, used as a fallback
+     * when the content view has no root window insets yet. Floating overlays are attached to
+     * the content view, which can extend behind the status and navigation bars, so the insets
+     * are used to keep them out of the system bars. */
+    private int mSystemBarInsetTop;
+    private int mSystemBarInsetBottom;
+
     private float mTerminalToolbarDefaultHeight;
 
     /** The in-app overlay view for the floating terminal panel, or null when closed. */
@@ -318,7 +327,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         View content = findViewById(android.R.id.content);
         content.setOnApplyWindowInsetsListener((v, insets) -> {
-            mNavBarHeight = insets.getSystemWindowInsetBottom();
+            WindowInsetsCompat windowInsets = WindowInsetsCompat.toWindowInsetsCompat(insets);
+            mNavBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+            mSystemBarInsetTop = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            mSystemBarInsetBottom = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+            // Insets may change while an overlay is already on screen (e.g. when the status
+            // bar visibility changes); clamp it again once the layout has settled.
+            if (mQuickCommandsOverlay != null || mFloatingTerminalPanel != null) {
+                v.post(() -> {
+                    if (mQuickCommandsOverlay != null) clampOverlayTranslation(mQuickCommandsOverlay);
+                    if (mFloatingTerminalPanel != null) clampOverlayTranslation(mFloatingTerminalPanel);
+                });
+            }
             return insets;
         });
 
@@ -747,6 +767,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         params.gravity = Gravity.CENTER;
         content.addView(mQuickCommandsOverlay, params);
         setupQuickCommandsOverlayDrag();
+        // Clamp once the overlay has been laid out so it never starts under the status bar.
+        mQuickCommandsOverlay.post(() -> {
+            if (mQuickCommandsOverlay != null) clampOverlayTranslation(mQuickCommandsOverlay);
+        });
         showQuickCommandsListPage();
         refreshQuickCommandList();
     }
@@ -914,14 +938,68 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
     }
 
-    /** Clamp an overlay's translation so the whole view stays inside its parent (the screen). */
+    /** Top inset occupied by the status bar, in the coordinate space of the content view that
+     * hosts the floating overlays. The content view normally spans the whole window, including
+     * the area behind the status bar, so its raw bounds cannot be used to keep views out of it. */
+    private int getContentTopInset() {
+        View content = findViewById(android.R.id.content);
+        if (content == null) return mSystemBarInsetTop;
+        WindowInsets rootInsets = content.getRootWindowInsets();
+        if (rootInsets == null) return mSystemBarInsetTop;
+        int windowInsetTop = WindowInsetsCompat.toWindowInsetsCompat(rootInsets)
+            .getInsets(WindowInsetsCompat.Type.statusBars()).top;
+        if (windowInsetTop <= 0) return 0;
+        int[] location = new int[2];
+        content.getLocationInWindow(location);
+        return Math.max(0, windowInsetTop - location[1]);
+    }
+
+    /** Bottom inset occupied by the navigation bar, in the coordinate space of the content view
+     * that hosts the floating overlays. */
+    private int getContentBottomInset() {
+        View content = findViewById(android.R.id.content);
+        if (content == null) return mSystemBarInsetBottom;
+        WindowInsets rootInsets = content.getRootWindowInsets();
+        if (rootInsets == null) return mSystemBarInsetBottom;
+        int windowInsetBottom = WindowInsetsCompat.toWindowInsetsCompat(rootInsets)
+            .getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+        if (windowInsetBottom <= 0) return 0;
+        int[] location = new int[2];
+        content.getLocationInWindow(location);
+        int windowHeight = content.getRootView().getHeight();
+        if (windowHeight <= 0) return mSystemBarInsetBottom;
+        int contentBottom = location[1] + content.getHeight();
+        return Math.max(0, windowInsetBottom - (windowHeight - contentBottom));
+    }
+
+    /** Clamp an overlay's translation so the whole view stays inside its parent and out of the
+     * system bars. The content view the overlays are attached to can extend behind the status
+     * and navigation bars, so the raw parent bounds alone would let them be dragged into the
+     * status bar. */
     private void clampOverlayTranslation(@NonNull View overlay) {
         View parent = (View) overlay.getParent();
-        if (parent == null) return;
-        float maxX = Math.max(0f, (parent.getWidth() - overlay.getWidth()) / 2f);
-        float maxY = Math.max(0f, (parent.getHeight() - overlay.getHeight()) / 2f);
-        overlay.setTranslationX(Math.max(-maxX, Math.min(maxX, overlay.getTranslationX())));
-        overlay.setTranslationY(Math.max(-maxY, Math.min(maxY, overlay.getTranslationY())));
+        if (parent == null || parent.getWidth() == 0 || parent.getHeight() == 0) return;
+
+        float minX = -overlay.getLeft();
+        float maxX = parent.getWidth() - overlay.getWidth() - overlay.getLeft();
+        float minY = getContentTopInset() - overlay.getTop();
+        float maxY = parent.getHeight() - getContentBottomInset()
+            - overlay.getHeight() - overlay.getTop();
+
+        // If the safe area is smaller than the overlay, center it inside the safe area instead.
+        if (minX > maxX) {
+            float centerX = (minX + maxX) / 2f;
+            minX = centerX;
+            maxX = centerX;
+        }
+        if (minY > maxY) {
+            float centerY = (minY + maxY) / 2f;
+            minY = centerY;
+            maxY = centerY;
+        }
+
+        overlay.setTranslationX(Math.max(minX, Math.min(maxX, overlay.getTranslationX())));
+        overlay.setTranslationY(Math.max(minY, Math.min(maxY, overlay.getTranslationY())));
     }
 
     /** Close the quick commands overlay panel, if shown. */
@@ -1170,11 +1248,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mFloatingTerminalPanel.post(this::applyFloatingTerminalAnchor);
     }
 
-    /** Put the panel's top edge back at the anchored position, clamped to the screen. */
+    /** Put the panel's top edge back at the anchored position, clamped to the visible area. */
     private void applyFloatingTerminalAnchor() {
-        if (mFloatingTerminalPanel == null || Float.isNaN(mFloatingTerminalAnchorTop)) return;
-        mFloatingTerminalPanel.setTranslationY(
-            mFloatingTerminalAnchorTop - mFloatingTerminalPanel.getTop());
+        if (mFloatingTerminalPanel == null) return;
+        if (!Float.isNaN(mFloatingTerminalAnchorTop)) {
+            mFloatingTerminalPanel.setTranslationY(
+                mFloatingTerminalAnchorTop - mFloatingTerminalPanel.getTop());
+        }
         clampOverlayTranslation(mFloatingTerminalPanel);
     }
 
@@ -1194,20 +1274,27 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         int topMargin;
         boolean dockRight;
+        // Keep the bubble between the status bar and the navigation bar: the content view can
+        // extend behind both of them.
+        int insetTop = getContentTopInset();
+        int insetBottom = getContentBottomInset();
+        int minTopMargin = insetTop + margin;
+        int maxTopMargin = parentHeight - insetBottom - size - margin;
         if (!Float.isNaN(mFloatingTerminalBubbleTop)) {
             // Re-use the edge and vertical position the bubble was last docked at, so
             // minimizing again keeps the bubble where the user left it.
             dockRight = mFloatingTerminalBubbleDockRight;
-            topMargin = Math.max(margin,
-                Math.min(Math.round(mFloatingTerminalBubbleTop), parentHeight - size - margin));
+            topMargin = Math.max(minTopMargin,
+                Math.min(Math.round(mFloatingTerminalBubbleTop), maxTopMargin));
         } else {
             int panelWidth = mFloatingTerminalPanel.getWidth();
             float panelCenterX = mFloatingTerminalPanel.getLeft()
                 + mFloatingTerminalPanel.getTranslationX() + panelWidth / 2f;
             float anchorTop = Float.isNaN(mFloatingTerminalAnchorTop)
-                ? (parentHeight - panelHeight) / 2f : mFloatingTerminalAnchorTop;
+                ? (insetTop + parentHeight - insetBottom - panelHeight) / 2f
+                : mFloatingTerminalAnchorTop;
             topMargin = (int) (anchorTop + panelHeight / 2f - size / 2f);
-            topMargin = Math.max(margin, Math.min(topMargin, parentHeight - size - margin));
+            topMargin = Math.max(minTopMargin, Math.min(topMargin, maxTopMargin));
             dockRight = panelCenterX > parentWidth / 2f;
         }
         // Keep the panel's restore position in sync with the bubble it will be restored from.
@@ -1261,14 +1348,26 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         content.addView(bubble, params);
     }
 
-    /** Keep a dragged bubble fully inside its parent while the finger moves. */
+    /** Keep a dragged bubble fully inside its parent and out of the system bars while the
+     * finger moves. */
     private void clampFloatingTerminalBubble(@NonNull View bubble) {
         View parent = (View) bubble.getParent();
-        if (parent == null) return;
+        if (parent == null || parent.getWidth() == 0 || parent.getHeight() == 0) return;
         float minX = -bubble.getLeft();
         float maxX = parent.getWidth() - bubble.getWidth() - bubble.getLeft();
-        float minY = -bubble.getTop();
-        float maxY = parent.getHeight() - bubble.getHeight() - bubble.getTop();
+        float minY = getContentTopInset() - bubble.getTop();
+        float maxY = parent.getHeight() - getContentBottomInset()
+            - bubble.getHeight() - bubble.getTop();
+        if (minX > maxX) {
+            float centerX = (minX + maxX) / 2f;
+            minX = centerX;
+            maxX = centerX;
+        }
+        if (minY > maxY) {
+            float centerY = (minY + maxY) / 2f;
+            minY = centerY;
+            maxY = centerY;
+        }
         bubble.setTranslationX(Math.max(minX, Math.min(maxX, bubble.getTranslationX())));
         bubble.setTranslationY(Math.max(minY, Math.min(maxY, bubble.getTranslationY())));
     }
@@ -1287,8 +1386,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         float top = bubble.getTop() + bubble.getTranslationY();
         boolean dockLeft = left + size / 2f <= parentWidth / 2f;
         int finalLeft = dockLeft ? margin : parentWidth - size - margin;
-        int finalTop = Math.max(margin,
-            Math.min(Math.round(top), parentHeight - size - margin));
+        // The bubble must stay below the status bar and above the navigation bar.
+        int finalTop = Math.max(getContentTopInset() + margin,
+            Math.min(Math.round(top),
+                parentHeight - getContentBottomInset() - size - margin));
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size);
         params.gravity = Gravity.TOP | Gravity.START;
