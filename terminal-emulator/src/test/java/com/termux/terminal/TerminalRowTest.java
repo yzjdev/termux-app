@@ -429,4 +429,11 @@ public class TerminalRowTest extends TestCase {
 		// assertEquals(' ', line.mText[line.findStartOfColumn(COLUMNS - 1)]);
 	}
 
+	public void testClearResetsLineWrap() {
+		row.mLineWrap = true;
+		row.clear(TextStyle.NORMAL);
+		assertFalse("A cleared (recycled) row must not keep a stale wrap flag", row.mLineWrap);
+		assertEquals(COLUMNS, row.getSpaceUsed());
+	}
+
 }

@@ -46,6 +46,33 @@ public class ScreenBufferTest extends TerminalTestCase {
 		assertEquals("ABC\nFG", mTerminal.getScreen().getSelectedText(0, 0, 1, 1, true, true));
 	}
 
+	public void testGetSelectedTextDoesNotCopyWideCharWrapPadding() {
+		// The wide char does not fit in the last column of "abcd ", so it is wrapped to the next
+		// row and the last cell of the first row is left as padding. Copying must not turn that
+		// padding into a space ("abcd 中" instead of "abcd中").
+		withTerminalSized(5, 3).enterString("abcd" + "\u4E2D");
+		assertTrue(mTerminal.getScreen().getLineWrap(0));
+		assertEquals("abcd\u4E2D", mTerminal.getSelectedText(0, 0, 4, 1));
+	}
+
+	public void testRecycledRowDoesNotKeepLineWrap() {
+		TerminalBuffer screen = new TerminalBuffer(5, 4, 2);
+		screen.setLineWrap(0);
+		// Scroll until the row that held the wrap flag is recycled as the new blank bottom row.
+		screen.scrollDownOneLine(0, 2, TextStyle.NORMAL);
+		screen.scrollDownOneLine(0, 2, TextStyle.NORMAL);
+		screen.scrollDownOneLine(0, 2, TextStyle.NORMAL);
+		assertFalse("Recycled row must not keep a stale wrap flag", screen.getLineWrap(1));
+		assertEquals("", screen.getSelectedText(0, 1, 4, 1));
+	}
+
+	public void testBlockSetClearsLineWrap() {
+		TerminalBuffer screen = new TerminalBuffer(5, 3, 3);
+		screen.setLineWrap(0);
+		screen.blockSet(0, 0, screen.mColumns, 1, ' ', TextStyle.NORMAL);
+		assertFalse(screen.getLineWrap(0));
+	}
+
 	public void testGetWordAtLocation() {
 		withTerminalSized(5, 3).enterString("ABCDEFGHIJ\r\nKLMNO");
 		assertEquals("ABCDEFGHIJKLMNO", mTerminal.getScreen().getWordAtLocation(0, 0));

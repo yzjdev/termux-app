@@ -146,6 +146,10 @@ public final class TerminalRow {
         Arrays.fill(mStyle, style);
         mSpaceUsed = (short) mColumns;
         mHasNonOneWidthOrSurrogateChars = false;
+        // A cleared row must not keep the wrap flag of the content it previously held. Rows are
+        // recycled when scrolling, and a stale flag makes getSelectedText() treat unrelated lines
+        // as a soft-wrapped continuation, copying the whole row width as trailing whitespace.
+        mLineWrap = false;
     }
 
     // https://github.com/steven676/Android-Terminal-Emulator/commit/9a47042620bec87617f0b4f5d50568535668fe26

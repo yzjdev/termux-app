@@ -87,6 +87,12 @@ public final class TerminalBuffer {
             if (rowLineWrap && x2 == columns) {
                 // If the line was wrapped, we shouldn't lose trailing space:
                 lastPrintingCharIndex = x2Index - 1;
+                // A double-width character that could not fit in the last column is moved to the
+                // next row, leaving an empty padding cell behind. That cell is not part of the
+                // text and must not be copied as a space, otherwise joining the rows inserts a
+                // bogus space in the middle of the line.
+                if (lastPrintingCharIndex >= x1Index && line[lastPrintingCharIndex] == ' '
+                    && nextRowStartsWithWideChar(row)) lastPrintingCharIndex--;
             } else {
                 for (i = x1Index; i < x2Index; ++i) {
                     char c = line[i];
@@ -103,6 +109,24 @@ public final class TerminalBuffer {
                 && row < selY2 && row < mScreenRows - 1) builder.append('\n');
         }
         return builder.toString();
+    }
+
+    /**
+     * Check whether the first cell of the row below {@code row} holds a double-width character.
+     * <p>
+     * When a double-width character is emitted with the cursor in the last column, the terminal
+     * wraps before writing it, so the previous row is left with a blank padding cell which is not
+     * real content. This is used by {@link #getSelectedText} to detect that case.
+     */
+    private boolean nextRowStartsWithWideChar(int row) {
+        if (row + 1 >= mScreenRows) return false;
+        TerminalRow nextLine = mLines[externalToInternalRow(row + 1)];
+        int spaceUsed = nextLine.getSpaceUsed();
+        if (spaceUsed == 0) return false;
+        char c = nextLine.mText[0];
+        int codePoint = (Character.isHighSurrogate(c) && spaceUsed > 1)
+            ? Character.toCodePoint(c, nextLine.mText[1]) : c;
+        return WcWidth.width(codePoint) == 2;
     }
 
     public String getWordAtLocation(int x, int y) {
@@ -439,9 +463,14 @@ public final class TerminalBuffer {
             throw new IllegalArgumentException(
                 "Illegal arguments! blockSet(" + sx + ", " + sy + ", " + w + ", " + h + ", " + val + ", " + mColumns + ", " + mScreenRows + ")");
         }
-        for (int y = 0; y < h; y++)
+        for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++)
                 setChar(sx + x, sy + y, val, style);
+            // Erasing up to the right edge of the line breaks any soft-wrap continuation.
+            if (sx + w == mColumns && val == ' ') {
+                clearLineWrap(sy + y);
+            }
+        }
     }
 
     public TerminalRow allocateFullLineIfNecessary(int row) {
