@@ -19,6 +19,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
 import android.util.DisplayMetrics;
+import android.text.InputType;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
@@ -32,10 +33,13 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -58,6 +62,7 @@ import com.termux.app.activities.FileEditorActivity;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.app.file.TextFileDetector;
+import com.termux.app.models.ExtraKeySymbol;
 import com.termux.app.models.QuickCommand;
 import com.termux.shared.shell.command.ExecutionCommand;
 import com.termux.shared.shell.command.runner.app.AppShell;
@@ -66,7 +71,7 @@ import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
-import com.termux.app.terminal.io.TerminalToolbarViewPager;
+import com.termux.app.terminal.io.FullScreenWorkAround;
 import com.termux.app.terminal.TermuxTerminalViewClient;
 import com.termux.shared.termux.extrakeys.ExtraKeysView;
 import com.termux.shared.termux.interact.TextInputDialogUtils;
@@ -92,7 +97,6 @@ import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
@@ -168,6 +172,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * The terminal extra keys view.
      */
     ExtraKeysView mExtraKeysView;
+
+    /**
+     * Horizontal scroller around {@link #mExtraKeysView}, so a wide toolbar can be panned.
+     */
+    HorizontalScrollView mTerminalToolbarScroll;
 
     /**
      * The client for the {@link #mExtraKeysView}.
@@ -269,7 +278,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Position of the command whose action page (run/edit/delete) is shown, or -1 when none. */
     private int mQuickCommandActionPosition = -1;
 
-
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
     private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_ID = 1;
     private static final int CONTEXT_MENU_SHARE_SELECTED_TEXT = 10;
@@ -283,7 +291,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_SETTINGS_ID = 8;
     private static final int CONTEXT_MENU_REPORT_ID = 9;
 
-    private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
@@ -348,7 +355,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setTermuxTerminalViewAndClients();
 
-        setTerminalToolbarView(savedInstanceState);
+        setTerminalToolbarView();
 
         setSettingsButtonView();
 
@@ -482,7 +489,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logVerbose(LOG_TAG, "onSaveInstanceState");
 
         super.onSaveInstanceState(savedInstanceState);
-        saveTerminalToolbarTextInput(savedInstanceState);
         savedInstanceState.putBoolean(ARG_ACTIVITY_RECREATED, true);
     }
 
@@ -635,58 +641,188 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
 
 
-    private void setTerminalToolbarView(Bundle savedInstanceState) {
+    private void setTerminalToolbarView() {
         mTermuxTerminalExtraKeys = new TermuxTerminalExtraKeys(this, mTerminalView,
             mTermuxTerminalViewClient, mTermuxTerminalSessionActivityClient);
 
-        final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
-        if (mPreferences.shouldShowTerminalToolbar()) terminalToolbarViewPager.setVisibility(View.VISIBLE);
+        final ExtraKeysView extraKeysView = findViewById(R.id.terminal_toolbar_extra_keys);
+        mExtraKeysView = extraKeysView;
+        mTerminalToolbarScroll = findViewById(R.id.terminal_toolbar_scroll);
 
-        ViewGroup.LayoutParams layoutParams = terminalToolbarViewPager.getLayoutParams();
-        mTerminalToolbarDefaultHeight = layoutParams.height;
+        if (mPreferences.shouldShowTerminalToolbar() && mTerminalToolbarScroll != null)
+            mTerminalToolbarScroll.setVisibility(View.VISIBLE);
+
+        mTerminalToolbarDefaultHeight = extraKeysView.getLayoutParams().height;
+
+        extraKeysView.setExtraKeysViewClient(mTermuxTerminalExtraKeys);
+        extraKeysView.setButtonTextAllCaps(mProperties.shouldExtraKeysTextBeAllCaps());
+        extraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(), mTerminalToolbarDefaultHeight);
+
+        // apply extra keys fix if enabled in prefs
+        if (mProperties.isUsingFullScreen() && mProperties.isUsingFullScreenWorkAround()) {
+            FullScreenWorkAround.apply(this);
+        }
 
         setTerminalToolbarHeight();
-
-        String savedTextInput = null;
-        if (savedInstanceState != null)
-            savedTextInput = savedInstanceState.getString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT);
-
-        terminalToolbarViewPager.setAdapter(new TerminalToolbarViewPager.PageAdapter(this, savedTextInput));
-        terminalToolbarViewPager.addOnPageChangeListener(new TerminalToolbarViewPager.OnPageChangeListener(this, terminalToolbarViewPager));
     }
 
     private void setTerminalToolbarHeight() {
-        final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
-        if (terminalToolbarViewPager == null) return;
+        if (mExtraKeysView == null) return;
 
-        ViewGroup.LayoutParams layoutParams = terminalToolbarViewPager.getLayoutParams();
+        ViewGroup.LayoutParams layoutParams = mExtraKeysView.getLayoutParams();
         layoutParams.height = Math.round(mTerminalToolbarDefaultHeight *
-            (mTermuxTerminalExtraKeys.getExtraKeysInfo() == null ? 0 : mTermuxTerminalExtraKeys.getExtraKeysInfo().getMatrix().length) *
+            mTermuxTerminalExtraKeys.getRowCount() *
             mProperties.getTerminalToolbarHeightScaleFactor());
-        terminalToolbarViewPager.setLayoutParams(layoutParams);
+        mExtraKeysView.setLayoutParams(layoutParams);
+        updateTerminalToolbarWidth();
+    }
+
+    /** Keep every column at a readable minimum width; when the resulting toolbar is wider than
+     * the screen it scrolls horizontally inside {@link #mTerminalToolbarScroll} instead of
+     * squeezing all buttons into the available width. */
+    private void updateTerminalToolbarWidth() {
+        if (mExtraKeysView == null || mTermuxTerminalExtraKeys == null) return;
+
+        int columns = mTermuxTerminalExtraKeys.getColumnCount();
+        int minColumnWidth = (int) (48 * getResources().getDisplayMetrics().density);
+        int viewportWidth = getResources().getDisplayMetrics().widthPixels;
+        int width = Math.max(viewportWidth, columns * minColumnWidth);
+
+        ViewGroup.LayoutParams layoutParams = mExtraKeysView.getLayoutParams();
+        if (layoutParams.width != width) {
+            layoutParams.width = width;
+            mExtraKeysView.setLayoutParams(layoutParams);
+        }
     }
 
     public void toggleTerminalToolbar() {
-        final ViewPager terminalToolbarViewPager = getTerminalToolbarViewPager();
-        if (terminalToolbarViewPager == null) return;
+        if (mTerminalToolbarScroll == null) return;
 
         final boolean showNow = mPreferences.toogleShowTerminalToolbar();
         Logger.showToast(this, (showNow ? getString(R.string.msg_enabling_terminal_toolbar) : getString(R.string.msg_disabling_terminal_toolbar)), true);
-        terminalToolbarViewPager.setVisibility(showNow ? View.VISIBLE : View.GONE);
-        if (showNow && isTerminalToolbarTextInputViewSelected()) {
-            // Focus the text input view if just revealed.
-            findViewById(R.id.terminal_toolbar_text_input).requestFocus();
+        mTerminalToolbarScroll.setVisibility(showNow ? View.VISIBLE : View.GONE);
+    }
+
+    /** @return the symbols the user added to the terminal toolbar, in display order. */
+    public List<ExtraKeySymbol> getExtraKeySymbols() {
+        List<ExtraKeySymbol> symbols = new ArrayList<>();
+        String json = getSharedPreferences("termux_activity", MODE_PRIVATE)
+            .getString(KEY_EXTRA_KEY_SYMBOLS, null);
+        if (json == null) return symbols;
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                ExtraKeySymbol symbol = ExtraKeySymbol.fromJson(array.opt(i));
+                if (symbol != null) symbols.add(symbol);
+            }
+        } catch (JSONException e) {
+            Logger.logError(LOG_TAG, "Failed to parse saved extra key symbols: " + e.getMessage());
+        }
+        return symbols;
+    }
+
+    /** Show a dialog that lets the user add a symbol to the terminal toolbar. */
+    public void showAddExtraKeySymbolDialog() {
+        final float density = getResources().getDisplayMetrics().density;
+        int horizontalPadding = (int) (20 * density);
+
+        final EditText symbolInput = new EditText(this);
+        symbolInput.setHint(R.string.hint_extra_key_symbol);
+        symbolInput.setSingleLine(true);
+
+        final EditText rowInput = new EditText(this);
+        rowInput.setHint(R.string.hint_extra_key_row);
+        rowInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        rowInput.setSingleLine(true);
+
+        final EditText columnInput = new EditText(this);
+        columnInput.setHint(R.string.hint_extra_key_column);
+        columnInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        columnInput.setSingleLine(true);
+
+        LinearLayout positionRow = new LinearLayout(this);
+        positionRow.setOrientation(LinearLayout.HORIZONTAL);
+        positionRow.addView(rowInput, new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        positionRow.addView(columnInput, new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(horizontalPadding, (int) (8 * density), horizontalPadding, 0);
+        container.addView(symbolInput, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        container.addView(positionRow, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle(R.string.title_add_extra_key_symbol)
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.action_add_extra_key_symbol, (d, which) -> {
+                String symbol = symbolInput.getText().toString().trim();
+                if (symbol.isEmpty()) return;
+                addExtraKeySymbol(symbol, parseExtraKeyPosition(rowInput),
+                    parseExtraKeyPosition(columnInput));
+            })
+            .create();
+        dialog.setOnShowListener(d -> {
+            symbolInput.requestFocus();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setSoftInputMode(
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            }
+        });
+        dialog.show();
+    }
+
+    /** Parse an optional 1-based row/column; 0 means the symbol is appended automatically. */
+    private int parseExtraKeyPosition(@NonNull EditText input) {
+        try {
+            return Math.max(0, Integer.parseInt(input.getText().toString().trim()));
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
-    private void saveTerminalToolbarTextInput(Bundle savedInstanceState) {
-        if (savedInstanceState == null) return;
-
-        final EditText textInputView = findViewById(R.id.terminal_toolbar_text_input);
-        if (textInputView != null) {
-            String textInput = textInputView.getText().toString();
-            if (!textInput.isEmpty()) savedInstanceState.putString(ARG_TERMINAL_TOOLBAR_TEXT_INPUT, textInput);
+    /** Persist a new toolbar symbol and refresh the toolbar. */
+    private void addExtraKeySymbol(String symbol, int row, int column) {
+        List<ExtraKeySymbol> symbols = getExtraKeySymbols();
+        for (ExtraKeySymbol existing : symbols) {
+            if (existing.symbol.equals(symbol)) {
+                Toast.makeText(this, R.string.msg_extra_key_symbol_exists, Toast.LENGTH_SHORT).show();
+                return;
+            }
         }
+        if (row <= 0 || column <= 0) {
+            row = 0;
+            column = 0;
+        }
+        symbols.add(new ExtraKeySymbol(symbol, row, column));
+        saveExtraKeySymbols(symbols);
+        reloadExtraKeys();
+    }
+
+    /** Persist the toolbar symbols as a JSON array. */
+    private void saveExtraKeySymbols(List<ExtraKeySymbol> symbols) {
+        JSONArray array = new JSONArray();
+        for (ExtraKeySymbol symbol : symbols) {
+            try {
+                array.put(symbol.toJson());
+            } catch (JSONException e) {
+                Logger.logError(LOG_TAG, "Failed to save extra key symbol: " + e.getMessage());
+            }
+        }
+        getSharedPreferences("termux_activity", MODE_PRIVATE).edit()
+            .putString(KEY_EXTRA_KEY_SYMBOLS, array.toString()).apply();
+    }
+
+    /** Rebuild the terminal toolbar after its extra keys changed. */
+    private void reloadExtraKeys() {
+        if (mExtraKeysView == null || mTermuxTerminalExtraKeys == null) return;
+        mTermuxTerminalExtraKeys.reloadExtraKeysInfo();
+        mExtraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(), mTerminalToolbarDefaultHeight);
+        setTerminalToolbarHeight();
     }
 
 
@@ -722,17 +858,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mQuickCommandsOverlay = getLayoutInflater().inflate(R.layout.dialog_floating_quick_commands, null, false);
         mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_close_button)
             .setOnClickListener(v -> {
-                // On a subpage (add/edit form or the run/edit/delete actions) the close button
-                // steps back to the list first; only the list page actually closes the panel.
-                if (isQuickCommandsEditPageShown() || isQuickCommandsActionsPageShown()) {
+                // On a subpage (add/edit form, the run/edit/delete actions or the restore
+                // defaults list) the close button steps back to the list first; only the list
+                // page actually closes the panel.
+                if (isQuickCommandsEditPageShown() || isQuickCommandsActionsPageShown()
+                    || isQuickCommandsRestorePageShown()) {
                     showQuickCommandsListPage();
                 } else {
                     hideQuickCommandsOverlay();
                 }
             });
-        // The reset button should not close the overlay: the list updates in place.
-        View resetButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
-        if (resetButton != null) resetButton.setOnClickListener(v -> resetQuickCommands());
+        // The restore button lists the built-in defaults and lets the user choose which ones to
+        // restore instead of overwriting the whole list.
+        View restoreButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
+        if (restoreButton != null) restoreButton.setOnClickListener(v -> showQuickCommandRestorePage());
 
         RecyclerView list = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_view);
         if (list == null) return;
@@ -741,13 +880,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         list.setAdapter(mQuickCommandListAdapter);
         attachQuickCommandDragReorder(list, mQuickCommandListAdapter);
 
-        MaterialButton addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
+        View addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
         if (addButton != null) addButton.setOnClickListener(v -> showQuickCommandEditPage(-1));
 
         mQuickCommandsOverlay.findViewById(R.id.quick_command_edit_cancel_button)
             .setOnClickListener(v -> showQuickCommandsListPage());
         mQuickCommandsOverlay.findViewById(R.id.quick_command_edit_ok_button)
             .setOnClickListener(v -> saveQuickCommandFromEditPage());
+
+        // Restore defaults page: cancel returns to the list, restore adds the selected defaults.
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_cancel_button)
+            .setOnClickListener(v -> showQuickCommandsListPage());
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_ok_button)
+            .setOnClickListener(v -> restoreSelectedQuickCommands());
+        mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_select_all_button)
+            .setOnClickListener(v -> toggleQuickCommandRestoreSelection());
 
         // Actions page: the run/edit/delete menu for the tapped command, shown in this panel.
         mQuickCommandsOverlay.findViewById(R.id.quick_command_action_run)
@@ -759,12 +906,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Attach the overlay inside the activity content so it only shows within the app.
         // The list page uses a fixed size: 90% of the screen width (capped on large screens)
-        // and 60% of the screen height, so the list scrolls inside it. The edit page
+        // and 55% of the screen height, so the list scrolls inside it. The edit page
         // shrink-wraps its height instead.
         ViewGroup content = findViewById(android.R.id.content);
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             getQuickCommandPanelWidth(), getQuickCommandPanelListHeight());
         params.gravity = Gravity.CENTER;
+        // Keep a little breathing room above the bottom edge / navigation bar.
+        params.bottomMargin = (int) (24 * getResources().getDisplayMetrics().density);
         content.addView(mQuickCommandsOverlay, params);
         setupQuickCommandsOverlayDrag();
         // Clamp once the overlay has been laid out so it never starts under the status bar.
@@ -777,7 +926,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /** Height of the shared panel while it shows the list; the edit page shrink-wraps instead. */
     private int getQuickCommandPanelListHeight() {
-        return (int) (getResources().getDisplayMetrics().heightPixels * 0.6f);
+        return (int) (getResources().getDisplayMetrics().heightPixels * 0.55f);
     }
 
     /** Switch the shared panel to its list page (also used when leaving the edit page). */
@@ -791,11 +940,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (editPage != null) editPage.setVisibility(View.GONE);
         View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
         if (actionsPage != null) actionsPage.setVisibility(View.GONE);
+        View restorePage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_restore_page);
+        if (restorePage != null) restorePage.setVisibility(View.GONE);
         mQuickCommandActionPosition = -1;
         TextView title = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_title);
         if (title != null) title.setText(R.string.title_quick_commands);
         View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
         if (reset != null) reset.setVisibility(View.VISIBLE);
+        View addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
+        if (addButton != null) addButton.setVisibility(View.VISIBLE);
+        View selectAll = mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_select_all_button);
+        if (selectAll != null) selectAll.setVisibility(View.GONE);
         setQuickCommandsPanelHeight(getQuickCommandPanelListHeight());
         clampOverlayTranslation(mQuickCommandsOverlay);
     }
@@ -825,6 +980,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             title.setText(isNew ? R.string.title_add_quick_command : R.string.title_edit_quick_command);
         View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
         if (reset != null) reset.setVisibility(View.GONE);
+        View addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
+        if (addButton != null) addButton.setVisibility(View.GONE);
+        View selectAll = mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_select_all_button);
+        if (selectAll != null) selectAll.setVisibility(View.GONE);
 
         EditText nameInput = mQuickCommandsOverlay.findViewById(R.id.quick_command_name_input);
         EditText commandInput = mQuickCommandsOverlay.findViewById(R.id.quick_command_command_input);
@@ -837,6 +996,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (editPage != null) editPage.setVisibility(View.VISIBLE);
         View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
         if (actionsPage != null) actionsPage.setVisibility(View.GONE);
+        View restorePage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_restore_page);
+        if (restorePage != null) restorePage.setVisibility(View.GONE);
 
         setQuickCommandsPanelHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
         clampOverlayTranslation(mQuickCommandsOverlay);
@@ -1496,6 +1657,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Key for the persisted quick commands JSON array in the activity preferences. */
     private static final String KEY_QUICK_COMMANDS = "drawer_quick_commands";
 
+    /** Key for the persisted JSON array of symbols the user added to the terminal toolbar. */
+    private static final String KEY_EXTRA_KEY_SYMBOLS = "extra_key_symbols";
+
     /** The quick commands shown in the drawer, loaded from preferences or the built-in defaults. */
     private final List<QuickCommand> mQuickCommands = new ArrayList<>();
 
@@ -1577,12 +1741,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (title != null) title.setText(mQuickCommands.get(position).name);
         View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
         if (reset != null) reset.setVisibility(View.GONE);
+        View addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
+        if (addButton != null) addButton.setVisibility(View.GONE);
+        View selectAll = mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_select_all_button);
+        if (selectAll != null) selectAll.setVisibility(View.GONE);
         View listPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_list_page);
         if (listPage != null) listPage.setVisibility(View.GONE);
         View editPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_edit_page);
         if (editPage != null) editPage.setVisibility(View.GONE);
         View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
         if (actionsPage != null) actionsPage.setVisibility(View.VISIBLE);
+        View restorePage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_restore_page);
+        if (restorePage != null) restorePage.setVisibility(View.GONE);
 
         setQuickCommandsPanelHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
         clampOverlayTranslation(mQuickCommandsOverlay);
@@ -1672,15 +1842,195 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         itemTouchHelper.attachToRecyclerView(list);
     }
 
-    /** Reset the quick commands to the built-in defaults. */
-    private void resetQuickCommands() {
-        mQuickCommands.clear();
-        for (int i = 0; i < DEFAULT_COMMANDS.length; i++) {
-            mQuickCommands.add(new QuickCommand(DEFAULT_COMMANDS[i][0], DEFAULT_COMMANDS[i][1],
-                COMMAND_ICONS[i % COMMAND_ICONS.length]));
+    /** True when the shared panel is showing the restore-defaults page. */
+    private boolean isQuickCommandsRestorePageShown() {
+        if (mQuickCommandsOverlay == null) return false;
+        View restorePage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_restore_page);
+        return restorePage != null && restorePage.getVisibility() == View.VISIBLE;
+    }
+
+    /** Show the page that lists the built-in default commands. The user checks the ones to
+     * restore; commands that are already in the list are shown as such and cannot be selected
+     * again, so restoring never creates duplicates. */
+    private void showQuickCommandRestorePage() {
+        if (mQuickCommandsOverlay == null) return;
+        hideQuickCommandKeyboard();
+
+        TextView title = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_title);
+        if (title != null) title.setText(R.string.title_restore_quick_commands);
+        View reset = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_reset_button);
+        if (reset != null) reset.setVisibility(View.GONE);
+        View addButton = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_add_button);
+        if (addButton != null) addButton.setVisibility(View.GONE);
+        View selectAll = mQuickCommandsOverlay.findViewById(R.id.quick_command_restore_select_all_button);
+        if (selectAll != null) selectAll.setVisibility(View.VISIBLE);
+
+        View listPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_commands_list_page);
+        if (listPage != null) listPage.setVisibility(View.GONE);
+        View editPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_edit_page);
+        if (editPage != null) editPage.setVisibility(View.GONE);
+        View actionsPage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_actions_page);
+        if (actionsPage != null) actionsPage.setVisibility(View.GONE);
+        View restorePage = mQuickCommandsOverlay.findViewById(R.id.floating_quick_command_restore_page);
+        if (restorePage != null) restorePage.setVisibility(View.VISIBLE);
+
+        populateQuickCommandRestoreList();
+
+        setQuickCommandsPanelHeight(getQuickCommandPanelListHeight());
+        clampOverlayTranslation(mQuickCommandsOverlay);
+    }
+
+    /** Fill the restore page with one checkable row per built-in default command. Commands that
+     * already exist in the list are shown disabled at the bottom. */
+    private void populateQuickCommandRestoreList() {
+        if (mQuickCommandsOverlay == null) return;
+        ViewGroup container = mQuickCommandsOverlay.findViewById(
+            R.id.floating_quick_command_restore_list);
+        if (container == null) return;
+        container.removeAllViews();
+
+        // Two passes: defaults that can still be restored come first, while the ones already
+        // present in the list (shown as disabled) are grouped at the bottom.
+        for (int pass = 0; pass < 2; pass++) {
+            for (int i = 0; i < DEFAULT_COMMANDS.length; i++) {
+                final int index = i;
+                final String name = DEFAULT_COMMANDS[i][0];
+                final String command = DEFAULT_COMMANDS[i][1];
+                final boolean alreadyInList = findQuickCommandByName(name) != null;
+                if (pass == 0 ? alreadyInList : !alreadyInList) continue;
+
+                View row = getLayoutInflater().inflate(
+                    R.layout.floating_quick_command_restore_item, container, false);
+                CheckBox checkBox = row.findViewById(R.id.quick_command_restore_checkbox);
+                TextView nameView = row.findViewById(R.id.quick_command_restore_name);
+                TextView commandView = row.findViewById(R.id.quick_command_restore_command);
+                TextView hintView = row.findViewById(R.id.quick_command_restore_hint);
+
+                nameView.setText(name);
+                commandView.setText(command);
+                // Only the restorable defaults are unchecked by default; the rows already in the
+                // list stay checked and disabled to show that they are present. Commands with
+                // the same name are never overwritten, so entries added or customized by the
+                // user survive a restore.
+                checkBox.setChecked(alreadyInList);
+                checkBox.setEnabled(!alreadyInList);
+                checkBox.setTag(index);
+                hintView.setVisibility(alreadyInList ? View.VISIBLE : View.GONE);
+                if (!alreadyInList) {
+                    row.setOnClickListener(v -> {
+                        checkBox.setChecked(!checkBox.isChecked());
+                        updateQuickCommandRestoreSelectAllButton();
+                    });
+                }
+                container.addView(row);
+            }
+        }
+
+        updateQuickCommandRestoreSelectAllButton();
+
+        View scroll = mQuickCommandsOverlay.findViewById(
+            R.id.floating_quick_command_restore_scroll);
+        if (scroll != null) scroll.scrollTo(0, 0);
+    }
+
+    /** Update the select-all button: it offers "select none" while every selectable row is
+     * checked and "select all" otherwise. Rows that are disabled (command already in the list)
+     * are ignored, as they cannot be changed. */
+    private void updateQuickCommandRestoreSelectAllButton() {
+        if (mQuickCommandsOverlay == null) return;
+        View button = mQuickCommandsOverlay.findViewById(
+            R.id.quick_command_restore_select_all_button);
+        if (!(button instanceof TextView)) return;
+        ViewGroup container = mQuickCommandsOverlay.findViewById(
+            R.id.floating_quick_command_restore_list);
+        if (container == null) return;
+
+        boolean anySelectable = false;
+        boolean allSelected = true;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            CheckBox checkBox = container.getChildAt(i)
+                .findViewById(R.id.quick_command_restore_checkbox);
+            if (checkBox == null || !checkBox.isEnabled()) continue;
+            anySelectable = true;
+            if (!checkBox.isChecked()) {
+                allSelected = false;
+                break;
+            }
+        }
+
+        button.setEnabled(anySelectable);
+        button.setAlpha(anySelectable ? 1f : 0.4f);
+        ((TextView) button).setText(anySelectable && allSelected
+            ? R.string.action_unselect_all_quick_commands
+            : R.string.action_select_all_quick_commands);
+    }
+
+    /** Toggle all selectable restore rows: check them all unless they are all already checked,
+     * in which case uncheck them all. */
+    private void toggleQuickCommandRestoreSelection() {
+        if (mQuickCommandsOverlay == null) return;
+        ViewGroup container = mQuickCommandsOverlay.findViewById(
+            R.id.floating_quick_command_restore_list);
+        if (container == null) return;
+
+        boolean anySelectable = false;
+        boolean allSelected = true;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            CheckBox checkBox = container.getChildAt(i)
+                .findViewById(R.id.quick_command_restore_checkbox);
+            if (checkBox == null || !checkBox.isEnabled()) continue;
+            anySelectable = true;
+            if (!checkBox.isChecked()) {
+                allSelected = false;
+                break;
+            }
+        }
+        if (!anySelectable) return;
+
+        boolean select = !allSelected;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            CheckBox checkBox = container.getChildAt(i)
+                .findViewById(R.id.quick_command_restore_checkbox);
+            if (checkBox != null && checkBox.isEnabled()) checkBox.setChecked(select);
+        }
+        updateQuickCommandRestoreSelectAllButton();
+    }
+
+    /** Find an existing quick command by its display name, or null if there is none. */
+    @Nullable
+    private QuickCommand findQuickCommandByName(@NonNull String name) {
+        for (QuickCommand quickCommand : mQuickCommands) {
+            if (name.equals(quickCommand.name)) return quickCommand;
+        }
+        return null;
+    }
+
+    /** Add the checked defaults that are not in the list yet and return to the list page. */
+    private void restoreSelectedQuickCommands() {
+        if (mQuickCommandsOverlay == null) return;
+        ViewGroup container = mQuickCommandsOverlay.findViewById(
+            R.id.floating_quick_command_restore_list);
+        if (container == null) return;
+
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View row = container.getChildAt(i);
+            CheckBox checkBox = row.findViewById(R.id.quick_command_restore_checkbox);
+            if (checkBox == null || !checkBox.isChecked()) continue;
+            Object tag = checkBox.getTag();
+            if (!(tag instanceof Integer)) continue;
+            int index = (Integer) tag;
+            if (index < 0 || index >= DEFAULT_COMMANDS.length) continue;
+
+            String name = DEFAULT_COMMANDS[index][0];
+            // Never overwrite or duplicate an entry the user already has: restoring only adds
+            // the selected defaults that are missing from the list.
+            if (findQuickCommandByName(name) != null) continue;
+            mQuickCommands.add(new QuickCommand(name, DEFAULT_COMMANDS[index][1],
+                COMMAND_ICONS[index % COMMAND_ICONS.length]));
         }
         saveQuickCommands();
         refreshQuickCommandList();
+        showQuickCommandsListPage();
     }
 
     /** The adapter for the quick commands list shown in the quick commands dialog (null if closed). */
@@ -2409,20 +2759,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
 
-    public ViewPager getTerminalToolbarViewPager() {
-        return (ViewPager) findViewById(R.id.terminal_toolbar_view_pager);
-    }
-
-    public float getTerminalToolbarDefaultHeight() {
-        return mTerminalToolbarDefaultHeight;
-    }
-
     public boolean isTerminalViewSelected() {
-        return getTerminalToolbarViewPager().getCurrentItem() == 0;
-    }
-
-    public boolean isTerminalToolbarTextInputViewSelected() {
-        return getTerminalToolbarViewPager().getCurrentItem() == 1;
+        // The toolbar only shows the extra keys now, so the terminal view is always selected.
+        return true;
     }
 
 

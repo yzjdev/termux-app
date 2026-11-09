@@ -81,12 +81,22 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <androidx.viewpager.widget.ViewPager
-                        android:id="@+id/terminal_toolbar_view_pager"
-                        android:visibility="gone"
+                    <HorizontalScrollView
+                        android:id="@+id/terminal_toolbar_scroll"
                         android:layout_width="match_parent"
-                        android:layout_height="37.5dp"
-                        android:background="@color/black" />
+                        android:layout_height="wrap_content"
+                        android:visibility="gone"
+                        android:fillViewport="true"
+                        android:scrollbars="none">
+
+                        <com.termux.shared.termux.extrakeys.ExtraKeysView
+                            android:id="@+id/terminal_toolbar_extra_keys"
+                            style="?android:attr/buttonBarStyle"
+                            android:layout_width="match_parent"
+                            android:layout_height="37.5dp"
+                            android:background="@color/black"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
                 </LinearLayout>
             </LinearLayout>
 

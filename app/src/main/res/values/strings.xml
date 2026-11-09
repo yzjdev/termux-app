@@ -138,7 +138,18 @@
     <string name="action_minimize_floating_terminal">最小化</string>
     <string name="action_restore_floating_terminal">恢复悬浮终端</string>
     <string name="msg_quick_commands_empty">还没有快捷指令，点击下方「添加命令」创建</string>
-    <string name="action_reset_quick_commands">重置</string>
+    <string name="action_restore_quick_commands">恢复</string>
+    <string name="action_select_all_quick_commands">全选</string>
+    <string name="action_unselect_all_quick_commands">全不选</string>
+    <string name="title_restore_quick_commands">恢复默认指令</string>
+    <string name="msg_quick_command_restore_hint">勾选要恢复到列表的默认指令，不会删除或覆盖你添加的指令</string>
+    <string name="msg_quick_command_already_in_list">已在列表中</string>
+    <string name="title_add_extra_key_symbol">添加快捷符号</string>
+    <string name="hint_extra_key_symbol">输入要添加到快捷栏的符号</string>
+    <string name="hint_extra_key_row">行（可选）</string>
+    <string name="hint_extra_key_column">列（可选）</string>
+    <string name="action_add_extra_key_symbol">添加</string>
+    <string name="msg_extra_key_symbol_exists">该符号已在快捷栏中</string>
 
     <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>
