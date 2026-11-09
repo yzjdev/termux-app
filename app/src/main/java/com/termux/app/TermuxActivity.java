@@ -13,8 +13,8 @@ import android.content.IntentFilter;
 import android.content.res.ColorStateList;
 import android.content.SharedPreferences;
 import android.content.ServiceConnection;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
@@ -33,8 +33,11 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.Filter;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
@@ -80,6 +83,7 @@ import com.termux.shared.termux.TermuxUtils;
 import com.termux.shared.termux.settings.properties.TermuxAppSharedProperties;
 import com.termux.shared.termux.theme.TermuxThemeUtils;
 import com.termux.shared.theme.NightMode;
+import com.termux.shared.theme.ThemeUtils;
 import com.termux.shared.view.KeyboardUtils;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.TerminalSession;
@@ -92,6 +96,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.ItemTouchHelper;
@@ -686,12 +691,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         int columns = mTermuxTerminalExtraKeys.getColumnCount();
         int minColumnWidth = (int) (48 * getResources().getDisplayMetrics().density);
         int viewportWidth = getResources().getDisplayMetrics().widthPixels;
-        int width = Math.max(viewportWidth, columns * minColumnWidth);
 
-        ViewGroup.LayoutParams layoutParams = mExtraKeysView.getLayoutParams();
-        if (layoutParams.width != width) {
-            layoutParams.width = width;
-            mExtraKeysView.setLayoutParams(layoutParams);
+        // A HorizontalScrollView always measures its child with an unspecified width, so setting
+        // the view width alone never makes it scroll. Giving every column a fixed width instead
+        // makes the grid measure wider than the screen, which is what enables the scrolling.
+        boolean scrolls = (long) columns * minColumnWidth > viewportWidth;
+        int fixedColumnWidth = scrolls ? minColumnWidth : 0;
+
+        if (mExtraKeysView.getFixedColumnWidth() != fixedColumnWidth) {
+            mExtraKeysView.setFixedColumnWidth(fixedColumnWidth);
+            // The width is applied while the buttons are created, so rebuild them.
+            mExtraKeysView.reload(mTermuxTerminalExtraKeys.getExtraKeysInfo(), mTerminalToolbarDefaultHeight);
         }
     }
 
@@ -723,22 +733,65 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /** Show a dialog that lets the user add a symbol to the terminal toolbar. */
     public void showAddExtraKeySymbolDialog() {
+        showExtraKeySymbolDialog(null);
+    }
+
+    /**
+     * Show a dialog that lets the user edit a symbol already added to the terminal toolbar, or
+     * delete it. This is triggered by long pressing the symbol button.
+     *
+     * @param symbol The symbol to edit.
+     */
+    public void showEditExtraKeySymbolDialog(@NonNull String symbol) {
+        showExtraKeySymbolDialog(symbol);
+    }
+
+    /**
+     * Show the dialog that adds a symbol to the terminal toolbar, or edits an existing one.
+     *
+     * @param editSymbol The symbol to edit, or {@code null} to add a new one.
+     */
+    private void showExtraKeySymbolDialog(@Nullable String editSymbol) {
         final float density = getResources().getDisplayMetrics().density;
         int horizontalPadding = (int) (20 * density);
+
+        final boolean editing = editSymbol != null;
+        final ExtraKeySymbol existing;
+        if (editing) {
+            ExtraKeySymbol found = null;
+            for (ExtraKeySymbol symbol : getExtraKeySymbols()) {
+                if (symbol.symbol.equals(editSymbol)) {
+                    found = symbol;
+                    break;
+                }
+            }
+            if (found == null) return;
+            existing = found;
+        } else {
+            existing = null;
+        }
 
         final EditText symbolInput = new EditText(this);
         symbolInput.setHint(R.string.hint_extra_key_symbol);
         symbolInput.setSingleLine(true);
+        if (editing) symbolInput.setText(existing.symbol);
 
-        final EditText rowInput = new EditText(this);
-        rowInput.setHint(R.string.hint_extra_key_row);
-        rowInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        rowInput.setSingleLine(true);
+        final EditText aliasInput = new EditText(this);
+        aliasInput.setHint(R.string.hint_extra_key_alias);
+        aliasInput.setSingleLine(true);
+        if (editing && existing.alias != null) aliasInput.setText(existing.alias);
 
-        final EditText columnInput = new EditText(this);
-        columnInput.setHint(R.string.hint_extra_key_column);
-        columnInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        columnInput.setSingleLine(true);
+        // A new symbol defaults to the first cell; an existing symbol keeps its saved position.
+        final int defaultRow = 1;
+        final int defaultColumn = 1;
+
+        final AutoCompleteTextView rowInput = createExtraKeyPositionInput(
+            R.string.hint_extra_key_row, buildExtraKeyPositionOptions(getExtraKeyRowCount()));
+        rowInput.setText(String.valueOf(editing && existing.row > 0 ? existing.row : defaultRow));
+
+        final AutoCompleteTextView columnInput = createExtraKeyPositionInput(
+            R.string.hint_extra_key_column, buildExtraKeyPositionOptions(getExtraKeyColumnCount()));
+        columnInput.setText(String.valueOf(editing && existing.column > 0 ? existing.column : defaultColumn));
 
         LinearLayout positionRow = new LinearLayout(this);
         positionRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -752,20 +805,37 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         container.setPadding(horizontalPadding, (int) (8 * density), horizontalPadding, 0);
         container.addView(symbolInput, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        container.addView(aliasInput, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         container.addView(positionRow, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle(R.string.title_add_extra_key_symbol)
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+            .setTitle(editing ? R.string.title_edit_extra_key_symbol : R.string.title_add_extra_key_symbol)
             .setView(container)
             .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.action_add_extra_key_symbol, (d, which) -> {
-                String symbol = symbolInput.getText().toString().trim();
-                if (symbol.isEmpty()) return;
-                addExtraKeySymbol(symbol, parseExtraKeyPosition(rowInput),
-                    parseExtraKeyPosition(columnInput));
-            })
-            .create();
+            .setPositiveButton(editing ? R.string.action_save_extra_key_symbol : R.string.action_add_extra_key_symbol,
+                (d, which) -> {
+                    String symbol = symbolInput.getText().toString().trim();
+                    if (symbol.isEmpty()) return;
+                    String alias = aliasInput.getText().toString().trim();
+                    int row = parseExtraKeyPosition(rowInput);
+                    int column = parseExtraKeyPosition(columnInput);
+                    if (editing) {
+                        updateExtraKeySymbol(existing.symbol, symbol, alias, row, column);
+                    } else {
+                        addExtraKeySymbol(symbol, alias, row, column);
+                    }
+                });
+
+        if (editing) {
+            // Deleting the symbol is offered from the same dialog, so a long press is enough to
+            // manage a symbol without any other entry point in the toolbar.
+            builder.setNeutralButton(R.string.action_delete_extra_key_symbol,
+                (d, which) -> deleteExtraKeySymbol(existing.symbol));
+        }
+
+        AlertDialog dialog = builder.create();
         dialog.setOnShowListener(d -> {
             symbolInput.requestFocus();
             if (dialog.getWindow() != null) {
@@ -776,17 +846,131 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         dialog.show();
     }
 
-    /** Parse an optional 1-based row/column; 0 means the symbol is appended automatically. */
+    /** Parse an optional 1-based row/column; an empty or invalid value means append automatically. */
     private int parseExtraKeyPosition(@NonNull EditText input) {
         try {
             return Math.max(0, Integer.parseInt(input.getText().toString().trim()));
         } catch (NumberFormatException e) {
+            // An empty field means no fixed position, so the symbol is appended automatically.
             return 0;
         }
     }
 
-    /** Persist a new toolbar symbol and refresh the toolbar. */
-    private void addExtraKeySymbol(String symbol, int row, int column) {
+    /**
+     * Create an input that accepts both a typed row/column and one picked from a dropdown, so the
+     * user can either choose an existing cell or enter any position by hand.
+     */
+    private AutoCompleteTextView createExtraKeyPositionInput(int hintResId,
+                                                             @NonNull List<String> options) {
+        AutoCompleteTextView input = new AutoCompleteTextView(this);
+        input.setHint(hintResId);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setGravity(Gravity.CENTER);
+        input.setThreshold(0);
+        input.setAdapter(createExtraKeyPositionAdapter(options));
+        input.setCompoundDrawablesWithIntrinsicBounds(null, null, createExtraKeyDropdownIcon(), null);
+
+        // The trailing arrow shrinks the text area, which would make centred text look shifted to
+        // the left, so the same width is added as leading padding to keep it visually centred.
+        Drawable arrow = input.getCompoundDrawables()[2];
+        if (arrow != null) {
+            int endPadding = input.getPaddingEnd();
+            input.setPaddingRelative(endPadding + arrow.getIntrinsicWidth(),
+                input.getPaddingTop(), endPadding, input.getPaddingBottom());
+        }
+        // Showing the dropdown from an OnClickListener would consume the touch and stop the field
+        // from being editable, so the dropdown is opened on focus and from the arrow instead.
+        input.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) input.showDropDown();
+        });
+        input.setOnTouchListener((v, event) -> {
+            if (arrow != null && event.getAction() == MotionEvent.ACTION_UP
+                && event.getX() >= input.getWidth() - input.getPaddingEnd() - arrow.getBounds().width()) {
+                input.showDropDown();
+                return true;
+            }
+            return false;
+        });
+        return input;
+    }
+
+    /**
+     * Create the dropdown arrow shown at the end of a row/column input, tinted with the theme text
+     * colour so that it stays visible in both light and dark themes.
+     */
+    @Nullable
+    private Drawable createExtraKeyDropdownIcon() {
+        Drawable icon = AppCompatResources.getDrawable(this, R.drawable.ic_extra_key_dropdown);
+        if (icon == null) return null;
+
+        Drawable tinted = DrawableCompat.wrap(icon.mutate());
+        DrawableCompat.setTint(tinted, ThemeUtils.getTextColorSecondary(this));
+        return tinted;
+    }
+
+    /**
+     * Create the adapter for a row/column input. Every option is always offered, including the
+     * ones that do not match what has been typed so far, because the field is not a search box.
+     */
+    private ArrayAdapter<String> createExtraKeyPositionAdapter(@NonNull List<String> options) {
+        return new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, options) {
+            @NonNull
+            @Override
+            public Filter getFilter() {
+                return new Filter() {
+                    @Override
+                    protected FilterResults performFiltering(CharSequence constraint) {
+                        FilterResults results = new FilterResults();
+                        results.values = options;
+                        results.count = options.size();
+                        return results;
+                    }
+
+                    @Override
+                    protected void publishResults(CharSequence constraint, FilterResults results) {
+                        notifyDataSetChanged();
+                    }
+                };
+            }
+        };
+    }
+
+    /**
+     * @return the dropdown options for a row/column: every 1-based index. Appending is offered as
+     * the last index, i.e. one past the current count, instead of a special value.
+     */
+    @NonNull
+    private List<String> buildExtraKeyPositionOptions(int currentCount) {
+        List<String> options = new ArrayList<>();
+        // Offer one more than currently exists, so a symbol can be placed in a new row/column.
+        int max = Math.max(currentCount + 1, 1);
+        for (int i = 1; i <= max; i++) {
+            options.add(String.valueOf(i));
+        }
+        return options;
+    }
+
+    /** @return the number of rows currently in the toolbar grid. */
+    private int getExtraKeyRowCount() {
+        return mTermuxTerminalExtraKeys != null ? mTermuxTerminalExtraKeys.getRowCount() : 1;
+    }
+
+    /** @return the number of columns currently in the toolbar grid. */
+    private int getExtraKeyColumnCount() {
+        return mTermuxTerminalExtraKeys != null ? mTermuxTerminalExtraKeys.getColumnCount() : 1;
+    }
+
+    /**
+     * Persist a new toolbar symbol and refresh the toolbar.
+     *
+     * @param symbol The text sent to the terminal.
+     * @param alias The text shown on the button, or an empty string to show the symbol itself.
+     * @param row The 1-based row, or 0 to append automatically.
+     * @param column The 1-based column, or 0 to append automatically.
+     */
+    private void addExtraKeySymbol(@NonNull String symbol, @Nullable String alias,
+                                   int row, int column) {
         List<ExtraKeySymbol> symbols = getExtraKeySymbols();
         for (ExtraKeySymbol existing : symbols) {
             if (existing.symbol.equals(symbol)) {
@@ -798,7 +982,60 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             row = 0;
             column = 0;
         }
-        symbols.add(new ExtraKeySymbol(symbol, row, column));
+        symbols.add(new ExtraKeySymbol(symbol, alias, row, column));
+        saveExtraKeySymbols(symbols);
+        reloadExtraKeys();
+    }
+
+    /**
+     * Replace a toolbar symbol with the edited one, keeping its position in the list so the
+     * toolbar order does not change.
+     *
+     * @param oldSymbol The symbol being edited.
+     * @param symbol The new symbol text.
+     * @param alias The new text shown on the button, or an empty string to show the symbol.
+     * @param row The new 1-based row, or 0 to append automatically.
+     * @param column The new 1-based column, or 0 to append automatically.
+     */
+    private void updateExtraKeySymbol(@NonNull String oldSymbol, @NonNull String symbol,
+                                      @Nullable String alias, int row, int column) {
+        List<ExtraKeySymbol> symbols = getExtraKeySymbols();
+        int index = -1;
+        for (int i = 0; i < symbols.size(); i++) {
+            if (symbols.get(i).symbol.equals(oldSymbol)) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) return;
+
+        for (int i = 0; i < symbols.size(); i++) {
+            if (i != index && symbols.get(i).symbol.equals(symbol)) {
+                Toast.makeText(this, R.string.msg_extra_key_symbol_exists, Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+
+        if (row <= 0 || column <= 0) {
+            row = 0;
+            column = 0;
+        }
+        symbols.set(index, new ExtraKeySymbol(symbol, alias, row, column));
+        saveExtraKeySymbols(symbols);
+        reloadExtraKeys();
+    }
+
+    /** Remove a toolbar symbol and refresh the toolbar. */
+    private void deleteExtraKeySymbol(@NonNull String symbol) {
+        List<ExtraKeySymbol> symbols = getExtraKeySymbols();
+        boolean removed = false;
+        for (int i = symbols.size() - 1; i >= 0; i--) {
+            if (symbols.get(i).symbol.equals(symbol)) {
+                symbols.remove(i);
+                removed = true;
+            }
+        }
+        if (!removed) return;
         saveExtraKeySymbols(symbols);
         reloadExtraKeys();
     }

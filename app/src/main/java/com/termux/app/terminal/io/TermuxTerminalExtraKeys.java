@@ -7,6 +7,7 @@ import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.drawerlayout.widget.DrawerLayout;
 
+import com.google.android.material.button.MaterialButton;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.models.ExtraKeySymbol;
@@ -91,7 +92,7 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
                 matrix.put(row);
                 row = new JSONArray();
             }
-            row.put(createExtraKeyButton(symbol.symbol, symbol.symbol, null));
+            row.put(createExtraKeySymbolButton(symbol));
         }
 
         // Keep the add button at the end of the toolbar, after the user's symbols.
@@ -114,20 +115,50 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
         int columnIndex = symbol.column - 1;
         while (row.length() < columnIndex) row.put(createBlankExtraKeyButton());
 
-        JSONObject button = createExtraKeyButton(symbol.symbol, symbol.symbol, null);
-        if (columnIndex < row.length()) {
-            row.put(columnIndex, button);
-        } else {
-            row.put(button);
+        // Insert instead of replacing, so a symbol added to an occupied cell pushes the existing
+        // keys to the right instead of overwriting the one already there.
+        matrix.put(rowIndex, insertExtraKey(row, columnIndex, createExtraKeySymbolButton(symbol)));
+    }
+
+    /** @return a copy of {@code row} with {@code button} inserted at {@code index}. */
+    private JSONArray insertExtraKey(JSONArray row, int index, JSONObject button) throws JSONException {
+        JSONArray result = new JSONArray();
+        for (int i = 0; i < row.length(); i++) {
+            if (i == index) result.put(button);
+            result.put(row.get(i));
         }
+        if (index >= row.length()) result.put(button);
+        return result;
+    }
+
+    /**
+     * Create the JSON config for a symbol the user added to the toolbar. The symbol itself is
+     * what gets sent to the terminal, while the alias, when set, is what the button shows.
+     */
+    private JSONObject createExtraKeySymbolButton(ExtraKeySymbol symbol) throws JSONException {
+        JSONObject button = createExtraKeyButton(symbol.symbol, symbol.getDisplay(), null, true);
+        button.put(ExtraKeyButton.KEY_USER_SYMBOL_VALUE, symbol.symbol);
+        return button;
     }
 
     /** Create the JSON config for an extra key button. */
     private JSONObject createExtraKeyButton(String key, String display, String icon) throws JSONException {
+        return createExtraKeyButton(key, display, icon, false);
+    }
+
+    /**
+     * Create the JSON config for an extra key button.
+     *
+     * @param userSymbol Whether the button is a symbol the user added to the toolbar, and can
+     *                   therefore be edited by long pressing it.
+     */
+    private JSONObject createExtraKeyButton(String key, String display, String icon,
+                                            boolean userSymbol) throws JSONException {
         JSONObject button = new JSONObject();
         button.put(ExtraKeyButton.KEY_KEY_NAME, key);
         if (display != null) button.put(ExtraKeyButton.KEY_DISPLAY_NAME, display);
         if (icon != null) button.put(ExtraKeyButton.KEY_ICON, icon);
+        if (userSymbol) button.put(ExtraKeyButton.KEY_USER_SYMBOL, true);
         return button;
     }
 
@@ -197,6 +228,18 @@ public class TermuxTerminalExtraKeys extends TerminalExtraKeys {
     /** Rebuild the extra keys info, e.g. after the user adds or removes a quick symbol. */
     public void reloadExtraKeysInfo() {
         setExtraKeys();
+    }
+
+    @Override
+    public boolean onExtraKeyButtonLongClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+        if (!buttonInfo.isUserSymbol()) return false;
+        // The symbol value is the text exactly as the user typed it, while the key may have been
+        // rewritten by the control character aliases (e.g. RETURN -> ENTER) and the display may
+        // show the alias instead of the symbol.
+        String symbol = buttonInfo.getUserSymbolValue();
+        if (symbol == null) symbol = buttonInfo.getDisplay();
+        mActivity.showEditExtraKeySymbolDialog(symbol);
+        return true;
     }
 
     @SuppressLint("RtlHardcoded")

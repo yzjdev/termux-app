@@ -28,6 +28,19 @@ public class ExtraKeyButton {
     /** The key name for the icon resource name of the extra key if using a dict to define the extra key. {icon: name, ...} */
     public static final String KEY_ICON = "icon";
 
+    /**
+     * The key name for whether the extra key is a symbol the user added to the toolbar and can
+     * therefore be edited by long pressing its button. {userSymbol: true, ...}
+     */
+    public static final String KEY_USER_SYMBOL = "userSymbol";
+
+    /**
+     * The key name for the symbol exactly as the user entered it, kept apart from the key because
+     * the key may be rewritten by the control character aliases and the display may show an alias.
+     * {userSymbolValue: value, ...}
+     */
+    public static final String KEY_USER_SYMBOL_VALUE = "userSymbolValue";
+
 
     /**
      * The key that will be sent to the terminal, either a control character, like defined in
@@ -57,6 +70,20 @@ public class ExtraKeyButton {
      */
     @Nullable
     private final ExtraKeyButton popup;
+
+    /**
+     * Whether this button is a symbol the user added to the toolbar, and can therefore be edited
+     * by long pressing its button.
+     */
+    private final boolean userSymbol;
+
+    /**
+     * The symbol exactly as the user entered it, or {@code null} when this is not a user added
+     * symbol. Unlike {@link #key} it is never rewritten by the control character aliases, and
+     * unlike {@link #display} it is not replaced by an alias.
+     */
+    @Nullable
+    private final String userSymbolValue;
 
 
     /**
@@ -121,6 +148,9 @@ public class ExtraKeyButton {
 
         this.icon = getStringFromJson(config, KEY_ICON);
 
+        this.userSymbol = config.optBoolean(KEY_USER_SYMBOL, false);
+        this.userSymbolValue = getStringFromJson(config, KEY_USER_SYMBOL_VALUE);
+
         this.popup = popup;
     }
 
@@ -160,6 +190,23 @@ public class ExtraKeyButton {
     @Nullable
     public ExtraKeyButton getPopup() {
         return popup;
+    }
+
+    /**
+     * Check whether this button is a symbol the user added to the toolbar, and can therefore be
+     * edited by long pressing its button.
+     */
+    public boolean isUserSymbol() {
+        return userSymbol;
+    }
+
+    /**
+     * Get the symbol exactly as the user entered it, or {@code null} when this is not a user
+     * added symbol.
+     */
+    @Nullable
+    public String getUserSymbolValue() {
+        return userSymbolValue;
     }
 
     /**

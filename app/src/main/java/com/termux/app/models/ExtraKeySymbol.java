@@ -16,12 +16,17 @@ import org.json.JSONObject;
 public class ExtraKeySymbol {
 
     private static final String KEY_SYMBOL = "symbol";
+    private static final String KEY_ALIAS = "alias";
     private static final String KEY_ROW = "row";
     private static final String KEY_COLUMN = "column";
 
     /** The text sent to the terminal when the button is tapped. */
     @NonNull
     public final String symbol;
+
+    /** The text shown on the button, or {@code null} to show {@link #symbol} instead. */
+    @Nullable
+    public final String alias;
 
     /** 1-based row, or 0 to append automatically. */
     public final int row;
@@ -30,7 +35,12 @@ public class ExtraKeySymbol {
     public final int column;
 
     public ExtraKeySymbol(@NonNull String symbol, int row, int column) {
+        this(symbol, null, row, column);
+    }
+
+    public ExtraKeySymbol(@NonNull String symbol, @Nullable String alias, int row, int column) {
         this.symbol = symbol;
+        this.alias = (alias == null || alias.isEmpty()) ? null : alias;
         this.row = row;
         this.column = column;
     }
@@ -40,10 +50,17 @@ public class ExtraKeySymbol {
         return row > 0 && column > 0;
     }
 
+    /** @return the text to show on the button, which is the alias when one is set. */
+    @NonNull
+    public String getDisplay() {
+        return alias != null ? alias : symbol;
+    }
+
     @NonNull
     public JSONObject toJson() throws JSONException {
         JSONObject json = new JSONObject();
         json.put(KEY_SYMBOL, symbol);
+        if (alias != null) json.put(KEY_ALIAS, alias);
         if (hasPosition()) {
             json.put(KEY_ROW, row);
             json.put(KEY_COLUMN, column);
@@ -61,7 +78,8 @@ public class ExtraKeySymbol {
         if (!json.has(KEY_SYMBOL)) return null;
         String symbol = json.optString(KEY_SYMBOL);
         if (symbol.isEmpty()) return null;
-        return new ExtraKeySymbol(symbol, json.optInt(KEY_ROW, 0), json.optInt(KEY_COLUMN, 0));
+        return new ExtraKeySymbol(symbol, json.optString(KEY_ALIAS, null),
+            json.optInt(KEY_ROW, 0), json.optInt(KEY_COLUMN, 0));
     }
 
 }

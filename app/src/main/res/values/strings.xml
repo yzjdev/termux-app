@@ -146,10 +146,14 @@
     <string name="msg_quick_command_already_in_list">已在列表中</string>
     <string name="title_add_extra_key_symbol">添加快捷符号</string>
     <string name="hint_extra_key_symbol">输入要添加到快捷栏的符号</string>
-    <string name="hint_extra_key_row">行（可选）</string>
-    <string name="hint_extra_key_column">列（可选）</string>
+    <string name="hint_extra_key_alias">别名（可选，显示在按钮上）</string>
+    <string name="hint_extra_key_row">行</string>
+    <string name="hint_extra_key_column">列</string>
     <string name="action_add_extra_key_symbol">添加</string>
     <string name="msg_extra_key_symbol_exists">该符号已在快捷栏中</string>
+    <string name="title_edit_extra_key_symbol">编辑快捷符号</string>
+    <string name="action_save_extra_key_symbol">保存</string>
+    <string name="action_delete_extra_key_symbol">删除</string>
 
     <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>

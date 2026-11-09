@@ -108,6 +108,21 @@ public final class ExtraKeysView extends GridLayout {
          */
         boolean performExtraKeyButtonHapticFeedback(View view, ExtraKeyButton buttonInfo, MaterialButton button);
 
+        /**
+         * This is called by {@link ExtraKeysView} when a button is long pressed. It is only called
+         * for buttons whose {@link ExtraKeyButton#isUserSymbol()} returns {@code true}, so that the
+         * client can let the user edit or delete the symbol instead of sending it repeatedly.
+         *
+         * @param view The view that was long pressed.
+         * @param buttonInfo The {@link ExtraKeyButton} for the button that was long pressed.
+         * @param button The {@link MaterialButton} that was long pressed.
+         * @return Return {@code true} if the client handled the long press, in which case the
+         * button click that would otherwise follow is suppressed.
+         */
+        default boolean onExtraKeyButtonLongClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+            return false;
+        }
+
     }
 
 
@@ -210,6 +225,20 @@ public final class ExtraKeysView extends GridLayout {
     protected SpecialButtonsLongHoldRunnable mSpecialButtonsLongHoldRunnable;
     protected int mLongPressCount;
 
+    /** Whether the long press of a user added symbol was handled, in which case the click that
+     * would otherwise follow on {@link MotionEvent#ACTION_UP} is suppressed. */
+    protected boolean mUserSymbolLongPressHandled;
+    /** The runnable that triggers the long press of a user added symbol. */
+    protected Runnable mUserSymbolLongPressRunnable;
+
+    /**
+     * The width in pixels every column is given instead of sharing the available width, or
+     * {@code 0} to let the columns fill the view. A fixed width is used when the toolbar has more
+     * columns than fit on screen, so that the parent scroll container can scroll horizontally
+     * instead of squeezing every button.
+     */
+    protected int mFixedColumnWidth;
+
 
     public ExtraKeysView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -236,6 +265,20 @@ public final class ExtraKeysView extends GridLayout {
     /** Set {@link #mExtraKeysViewClient}. */
     public void setExtraKeysViewClient(IExtraKeysView extraKeysViewClient) {
         mExtraKeysViewClient = extraKeysViewClient;
+    }
+
+    /** Get {@link #mFixedColumnWidth}. */
+    public int getFixedColumnWidth() {
+        return mFixedColumnWidth;
+    }
+
+    /**
+     * Set {@link #mFixedColumnWidth}. A value of {@code 0} lets the columns share the available
+     * width, while a positive value gives every column that exact width so that the toolbar
+     * becomes wider than the screen and scrolls instead of squeezing its buttons.
+     */
+    public void setFixedColumnWidth(int fixedColumnWidth) {
+        mFixedColumnWidth = Math.max(0, fixedColumnWidth);
     }
 
 
@@ -440,8 +483,20 @@ public final class ExtraKeysView extends GridLayout {
                     switch (event.getAction()) {
                         case MotionEvent.ACTION_DOWN:
                             view.setBackgroundColor(mButtonActiveBackgroundColor);
-                            // Start long press scheduled executors which will be stopped in next MotionEvent
-                            startScheduledExecutors(view, buttonInfo, button);
+                            // A long press of a user added symbol is handled when it fires, but a
+                            // button released before that must still send its key, so the flag is
+                            // cleared for every button.
+                            mUserSymbolLongPressHandled = false;
+                            if (buttonInfo.isUserSymbol()) {
+                                // A user added symbol is edited by long pressing it, so no auto
+                                // repeat is started for it.
+                                stopScheduledExecutors();
+                                mLongPressCount = 0;
+                                startUserSymbolLongPress(view, buttonInfo, button);
+                            } else {
+                                // Start long press scheduled executors which will be stopped in next MotionEvent
+                                startScheduledExecutors(view, buttonInfo, button);
+                            }
                             return true;
 
                         case MotionEvent.ACTION_MOVE:
@@ -462,11 +517,19 @@ public final class ExtraKeysView extends GridLayout {
                         case MotionEvent.ACTION_CANCEL:
                             view.setBackgroundColor(mButtonBackgroundColor);
                             stopScheduledExecutors();
+                            stopUserSymbolLongPress();
                             return true;
 
                         case MotionEvent.ACTION_UP:
                             view.setBackgroundColor(mButtonBackgroundColor);
                             stopScheduledExecutors();
+                            stopUserSymbolLongPress();
+                            // The long press already opened the editor for the symbol, so the
+                            // symbol must not also be sent to the terminal.
+                            if (mUserSymbolLongPressHandled) {
+                                mUserSymbolLongPressHandled = false;
+                                return true;
+                            }
                             // If ACTION_UP up was not from a repetitive key or was with a key with a popup button
                             if (mLongPressCount == 0 || mPopupWindow != null) {
                                 // Trigger popup button click if swipe up complete
@@ -487,14 +550,21 @@ public final class ExtraKeysView extends GridLayout {
                 });
 
                 LayoutParams param = new GridLayout.LayoutParams();
-                param.width = 0;
+                if (mFixedColumnWidth > 0) {
+                    // A fixed width keeps every button readable; the toolbar then becomes wider
+                    // than the screen and is scrolled by its parent instead of squeezing columns.
+                    param.width = mFixedColumnWidth;
+                    param.columnSpec = GridLayout.spec(col, GridLayout.FILL);
+                } else {
+                    param.width = 0;
+                    param.columnSpec = GridLayout.spec(col, GridLayout.FILL, 1.f);
+                }
                 if(Build.VERSION.SDK_INT == Build.VERSION_CODES.LOLLIPOP) {
                    param.height = (int)(heightPx + 0.5);
                 } else {
                     param.height = 0;
                 }
                 param.setMargins(0, 0, 0, 0);
-                param.columnSpec = GridLayout.spec(col, GridLayout.FILL, 1.f);
                 param.rowSpec = GridLayout.spec(row, GridLayout.FILL, 1.f);
                 button.setLayoutParams(param);
 
@@ -584,6 +654,45 @@ public final class ExtraKeysView extends GridLayout {
             mHandler.removeCallbacks(mSpecialButtonsLongHoldRunnable);
             mSpecialButtonsLongHoldRunnable = null;
         }
+    }
+
+    /**
+     * Schedule the long press callback of a user added symbol, which lets the client edit the
+     * symbol instead of sending it. The callback is cancelled by {@link #stopUserSymbolLongPress()}
+     * if the button is released before {@link #mLongPressTimeout} has passed.
+     */
+    public void startUserSymbolLongPress(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+        stopUserSymbolLongPress();
+
+        if (mHandler == null)
+            mHandler = new Handler(Looper.getMainLooper());
+
+        mUserSymbolLongPressRunnable = () -> {
+            mUserSymbolLongPressRunnable = null;
+            if (onExtraKeyButtonLongClick(view, buttonInfo, button))
+                mUserSymbolLongPressHandled = true;
+        };
+        mHandler.postDelayed(mUserSymbolLongPressRunnable, mLongPressTimeout);
+    }
+
+    /** Cancel a pending long press of a user added symbol. */
+    public void stopUserSymbolLongPress() {
+        if (mUserSymbolLongPressRunnable != null && mHandler != null) {
+            mHandler.removeCallbacks(mUserSymbolLongPressRunnable);
+        }
+        mUserSymbolLongPressRunnable = null;
+    }
+
+    /**
+     * Notify the client that a user added symbol button was long pressed, so that it can let the
+     * user edit or delete the symbol.
+     *
+     * @return {@code true} if the client handled the long press.
+     */
+    public boolean onExtraKeyButtonLongClick(View view, ExtraKeyButton buttonInfo, MaterialButton button) {
+        if (mExtraKeysViewClient != null)
+            return mExtraKeysViewClient.onExtraKeyButtonLongClick(view, buttonInfo, button);
+        return false;
     }
 
     public class SpecialButtonsLongHoldRunnable implements Runnable {

@@ -29,10 +29,7 @@ ext {
 android {
     namespace "com.termux"
     compileSdk project.properties.compileSdkVersion.toInteger()
-
-    buildFeatures {
-        buildConfig true
-    }
+    buildToolsVersion project.properties.buildToolsVersion
     def appVersionName = System.getenv("TERMUX_APP_VERSION_NAME") ?: ""
     def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
     def splitAPKsForDebugBuilds = System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1"
@@ -50,6 +47,7 @@ android {
         implementation "io.noties.markwon:ext-strikethrough:$markwonVersion"
         implementation "io.noties.markwon:linkify:$markwonVersion"
         implementation "io.noties.markwon:recycler:$markwonVersion"
+        implementation 'com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava'
 
         // sora-editor code editor widget (editing features only, no language plugins)
         implementation "io.github.rosemoe:editor:0.24.4"
@@ -127,7 +125,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    lintOptions {
+    lint {
         disable 'ProtectedPermissions'
     }
 
@@ -155,6 +153,9 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig true
+    }
 }
 
 dependencies {
