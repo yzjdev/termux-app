@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths shared through the FileProvider used to hand APK files over to the system installer.
+     The APK is copied into cache/apk/ (see ApkInstallUtils) before it is shared. -->
+<paths>
+    <cache-path
+        name="apk_cache"
+        path="apk/" />
+</paths>

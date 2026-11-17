@@ -162,6 +162,28 @@
     <string name="action_drawer_parent_dir">上级目录</string>
     <string name="action_drawer_settings">设置</string>
 
+    <!-- APK 信息与安装 -->
+    <string name="title_apk_info">APK 信息</string>
+    <string name="action_apk_install">安装</string>
+    <string name="action_apk_reinstall">重新安装</string>
+    <string name="action_apk_update">更新</string>
+    <string name="action_apk_downgrade">降级安装</string>
+    <string name="apk_info_not_installed">未安装</string>
+    <string name="apk_info_installed">已安装 %1$s</string>
+    <string name="apk_info_installed_same">已安装相同版本 %1$s</string>
+    <string name="apk_info_update_available">可更新：已安装 %1$s，此 APK 为 %2$s</string>
+    <string name="apk_info_downgrade_warning">降级：已安装 %1$s，高于此 APK 的 %2$s，系统可能拒绝安装</string>
+    <string name="apk_info_details">包名：%1$s\n版本：%2$s（%3$d）\n大小：%4$s\n最低 SDK：%5$s\n目标 SDK：%6$s\n架构：%7$s</string>
+    <string name="apk_info_details_no_sdk">包名：%1$s\n版本：%2$s（%3$d）\n大小：%4$s\n架构：%5$s</string>
+    <string name="apk_info_no_abi">通用（无原生库）</string>
+    <string name="msg_apk_unreadable">无法解析该 APK 文件</string>
+    <string name="msg_apk_preparing_install">正在准备安装…</string>
+    <string name="msg_apk_prepare_install_failed">准备 APK 失败，无法读取文件</string>
+    <string name="msg_apk_no_installer">没有可用的应用安装器</string>
+    <string name="title_apk_install_permission">需要安装权限</string>
+    <string name="msg_apk_install_permission_required">%1$s 需要通过系统设置允许「安装未知应用」后才能安装 APK。</string>
+    <string name="action_open_install_settings">去设置</string>
+
     <string name="action_report_issue">Report Issue</string>
     <string name="msg_generating_report">Generating Report</string>
     <string name="msg_add_termux_debug_info">Add termux debug info to report?</string>

@@ -28,6 +28,9 @@ local.properties
 *.swo
 *.swp
 
+# AtomCode agent local state
+.atomcode/
+
 # OS-specific files
 .DS_Store
 .DS_Store?

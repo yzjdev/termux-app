@@ -64,6 +64,8 @@ import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
 import com.termux.app.activities.FileEditorActivity;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
+import com.termux.app.file.ApkInfoDialog;
+import com.termux.app.file.ApkInstallUtils;
 import com.termux.app.file.TextFileDetector;
 import com.termux.app.models.ExtraKeySymbol;
 import com.termux.app.models.QuickCommand;
@@ -2692,7 +2694,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         public void onBindViewHolder(@NonNull FileViewHolder holder, int position) {
             File file = group.items.get(position);
             holder.textView.setText(file.getName());
-            holder.iconView.setImageResource(file.isDirectory() ? R.drawable.ic_drawer_folder : R.drawable.ic_drawer_file);
+            holder.iconView.setImageResource(getDrawerFileIcon(file));
+        }
+
+        /** Folder, APK or plain file icon for {@code file}. */
+        private int getDrawerFileIcon(@NonNull File file) {
+            if (file.isDirectory()) return R.drawable.ic_drawer_folder;
+            if (ApkInstallUtils.isApkFile(file)) return R.drawable.ic_drawer_apk;
+            return R.drawable.ic_drawer_file;
         }
 
         @Override
@@ -2715,6 +2724,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     File file = group.items.get(position);
                     if (file.isDirectory()) {
                         group.enterDirectory(file);
+                    } else if (ApkInstallUtils.isApkFile(file)) {
+                        // APK: show its metadata (and install it) without leaving the drawer.
+                        ApkInfoDialog.show(TermuxActivity.this, file);
                     } else if (TextFileDetector.isTextFile(file)) {
                         // Text file: open it in the sora-editor based text editor. Keep the
                         // drawer open so that it is still open when coming back from the editor.
