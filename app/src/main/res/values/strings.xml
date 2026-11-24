@@ -162,6 +162,87 @@
     <string name="action_drawer_parent_dir">上级目录</string>
     <string name="action_drawer_settings">设置</string>
 
+    <!-- AtomCode 模型管理 -->
+    <string name="atomcode_models_preferences_title">AtomCode 模型</string>
+    <string name="atomcode_models_preferences_summary">管理 atomcode 的模型与默认模型</string>
+    <string name="title_activity_atomcode_models">AtomCode 模型管理</string>
+    <string name="atomcode_not_installed">未检测到 atomcode，请先在终端执行下面的命令安装：</string>
+    <string name="atomcode_config_missing">未找到 config.toml，在终端运行一次 atomcode 后会自动生成</string>
+    <string name="action_copy_install_command">复制命令</string>
+    <string name="msg_atomcode_install_command_copied">安装命令已复制</string>
+    <string name="action_add_atomcode_model">添加模型</string>
+    <string name="title_add_atomcode_model">添加模型</string>
+    <string name="title_edit_atomcode_model">编辑模型</string>
+    <string name="atomcode_model_default_badge">默认</string>
+    <string name="atomcode_model_id_label">模型 ID</string>
+    <string name="atomcode_model_id_hint">在 atomcode 中选择模型时显示的名称</string>
+    <string name="atomcode_model_account_label">Provider 账号</string>
+    <string name="atomcode_model_account_hint">选择已有账号</string>
+    <string name="atomcode_model_name_label">模型名</string>
+    <string name="atomcode_model_name_hint">发送给服务商的模型名，留空则与模型 ID 相同</string>
+    <string name="atomcode_model_context_label">上下文窗口（token）</string>
+    <string name="atomcode_model_context_hint">可选，例如 128000</string>
+    <string name="atomcode_model_vision_label">支持视觉（图片输入）</string>
+    <string name="atomcode_model_reasoning_label">推理强度</string>
+    <string name="atomcode_model_reasoning_hint">可选，用逗号分隔，例如 low, high</string>
+    <string name="atomcode_new_account_label">新建 Provider 账号</string>
+    <string name="atomcode_account_name_label">账号名称</string>
+    <string name="atomcode_account_provider_label">协议</string>
+    <string name="atomcode_account_provider_hint">例如 openai、openai-compatible</string>
+    <string name="atomcode_account_base_url_label">Base URL</string>
+    <string name="atomcode_account_base_url_hint">例如 https://api.example.com/v1</string>
+    <string name="atomcode_account_api_key_label">API Key</string>
+    <string name="atomcode_account_api_key_hint">仅写入配置文件，界面不再显示</string>
+    <string name="msg_atomcode_model_id_required">模型 ID 不能为空</string>
+    <string name="msg_atomcode_model_id_exists">模型 ID「%1$s」已存在</string>
+    <string name="msg_atomcode_account_required">请选择或新建一个 Provider 账号</string>
+    <string name="msg_atomcode_account_name_required">新建账号需要填写名称</string>
+    <string name="msg_atomcode_account_name_exists">账号「%1$s」已存在</string>
+    <string name="msg_atomcode_model_saved">已保存</string>
+    <string name="msg_atomcode_model_save_failed">保存失败：%1$s</string>
+    <string name="msg_atomcode_default_set">已将「%1$s」设为默认模型</string>
+    <string name="msg_confirm_delete_atomcode_model">确定删除模型「%1$s」吗？</string>
+    <string name="msg_atomcode_model_deleted">已删除</string>
+    <string name="action_set_default_model">设为默认</string>
+    <string name="action_edit_atomcode_model">编辑</string>
+    <string name="action_delete_atomcode_model">删除</string>
+    <string name="msg_atomcode_config_read_failed">读取配置失败：%1$s</string>
+    <string name="atomcode_default_model_summary">默认模型：%1$s</string>
+    <string name="atomcode_no_default_model">未设置默认模型</string>
+
+    <!-- 从 provider 拉取模型列表 -->
+    <string name="action_fetch_atomcode_models">拉取模型</string>
+    <string name="title_fetch_atomcode_models">拉取模型列表</string>
+    <string name="msg_fetch_atomcode_select_account">选择要拉取的 Provider 账号</string>
+    <string name="msg_fetch_atomcode_no_account">没有可用的 Provider 账号，请先添加模型并创建账号</string>
+    <string name="msg_fetch_atomcode_running">正在从「%1$s」拉取模型…</string>
+    <string name="msg_fetch_atomcode_failed">拉取失败：%1$s</string>
+    <string name="msg_fetch_atomcode_empty_new">「%1$s」的模型都已在列表中</string>
+    <string name="title_fetch_atomcode_pick">选择要添加的模型（共 %1$d 个）</string>
+    <string name="action_fetch_atomcode_import">添加所选</string>
+    <string name="msg_fetch_atomcode_imported">已添加 %1$d 个模型</string>
+
+    <!-- Provider 账号管理 -->
+    <string name="atomcode_group_manage">管理</string>
+    <string name="atomcode_group_unknown_account">未知账号</string>
+    <string name="atomcode_group_unknown_account_summary">模型引用的账号已不存在</string>
+    <string name="action_add_atomcode_account">添加账号</string>
+    <string name="title_add_atomcode_account">添加 Provider 账号</string>
+    <string name="title_edit_atomcode_account">编辑 Provider 账号</string>
+    <string name="atomcode_accounts_empty">还没有 Provider 账号，点击下方「添加账号」创建</string>
+    <string name="atomcode_account_key_configured">已配置密钥</string>
+    <string name="atomcode_account_key_missing">未配置密钥</string>
+    <string name="atomcode_account_models_count">%1$d 个模型在用</string>
+    <string name="atomcode_account_api_key_new_hint">留空则保留原有密钥</string>
+    <string name="action_delete_atomcode_account">删除</string>
+    <string name="action_edit_atomcode_account">编辑</string>
+    <string name="action_clear_atomcode_api_key">清除密钥</string>
+    <string name="msg_confirm_delete_atomcode_account">确定删除账号「%1$s」吗？</string>
+    <string name="msg_atomcode_account_in_use">账号「%1$s」仍被 %2$d 个模型引用，请先修改这些模型的账号</string>
+    <string name="msg_atomcode_account_saved">账号已保存</string>
+    <string name="msg_atomcode_account_deleted">账号已删除</string>
+    <string name="msg_atomcode_api_key_cleared">密钥已清除</string>
+
     <!-- APK 信息与安装 -->
     <string name="title_apk_info">APK 信息</string>
     <string name="action_apk_install">安装</string>

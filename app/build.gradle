@@ -52,6 +52,10 @@ android {
         // sora-editor code editor widget (editing features only, no language plugins)
         implementation "io.github.rosemoe:editor:0.24.4"
 
+        // NightConfig: TOML parser/writer used by the AtomCode model management screen.
+        implementation "com.electronwill.night-config:core:3.6.7"
+        implementation "com.electronwill.night-config:toml:3.6.7"
+
         implementation project(":terminal-view")
         implementation project(":termux-shared")
     }

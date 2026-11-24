@@ -1,6 +1,7 @@
 package com.termux.app.activities;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Environment;
 
@@ -60,6 +61,8 @@ public class SettingsActivity extends AppCompatActivity {
 
             setPreferencesFromResource(R.xml.root_preferences, rootKey);
 
+            configureAtomCodeModelsPreference(context);
+
             new Thread() {
                 @Override
                 public void run() {
@@ -71,6 +74,16 @@ public class SettingsActivity extends AppCompatActivity {
                     configureDonatePreference(context);
                 }
             }.start();
+        }
+
+        private void configureAtomCodeModelsPreference(@NonNull Context context) {
+            Preference atomCodePreference = findPreference("atomcode_models");
+            if (atomCodePreference != null) {
+                atomCodePreference.setOnPreferenceClickListener(preference -> {
+                    context.startActivity(new Intent(context, AtomCodeModelsActivity.class));
+                    return true;
+                });
+            }
         }
 
         private void configureTermuxAPIPreference(@NonNull Context context) {

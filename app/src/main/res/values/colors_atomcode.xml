@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AtomCode 模型管理：默认模型徽标配色。浅色主题为淡绿底 + 深绿字。 -->
+<resources>
+    <color name="atomcode_default_badge_background">#1F2E7D32</color>
+    <color name="atomcode_default_badge_text">#2E7D32</color>
+</resources>

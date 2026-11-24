@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AtomCode 模型管理：夜间主题下的默认徽标配色。 -->
+<resources>
+    <color name="atomcode_default_badge_background">#337DD87A</color>
+    <color name="atomcode_default_badge_text">#7DD87A</color>
+</resources>

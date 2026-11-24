@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include
+        layout="@layout/partial_primary_toolbar"
+        android:id="@+id/partial_primary_toolbar" />
+
+    <!-- 未安装 atomcode / 缺少 config.toml 时的提示卡片，正常时整体隐藏。 -->
+    <LinearLayout
+        android:id="@+id/atomcode_notice_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/drawer_section_card_background"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/atomcode_notice_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/atomcode_notice_command"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/atomcode_notice_copy_button"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:text="@string/action_copy_install_command"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- 单页列表：每个 provider 账号是一个分组标题，其下的模型紧随其后。 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/atomcode_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="12dp" />
+
+        <TextView
+            android:id="@+id/atomcode_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:padding="24dp"
+            android:text="@string/atomcode_accounts_empty"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="14sp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- 底部操作条：添加账号（新增后会立即拉取模型）/ 手动添加模型。
+         用普通按钮而非 FAB，因为 FAB 的 Surface 主题 overlay 解析不到本应用自定义的
+         drawer 属性，会在 inflate 时崩溃。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end|center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="12dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/atomcode_add_model_button"
+            style="@style/Widget.Material3.Button.OutlinedButton.Icon"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="@string/action_add_atomcode_model"
+            android:textSize="13sp"
+            app:icon="@drawable/ic_add"
+            app:iconSize="18dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/atomcode_add_account_button"
+            style="@style/Widget.Material3.Button.Icon"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="@string/action_add_atomcode_account"
+            android:textSize="13sp"
+            app:icon="@drawable/ic_add"
+            app:iconSize="18dp" />
+    </LinearLayout>
+
+</LinearLayout>

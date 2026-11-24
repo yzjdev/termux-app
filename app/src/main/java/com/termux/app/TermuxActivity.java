@@ -61,6 +61,7 @@ import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.data.DataUtils;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
+import com.termux.app.activities.AtomCodeModelsActivity;
 import com.termux.app.activities.FileEditorActivity;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
@@ -1070,6 +1071,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         MaterialButton settingsButton = findViewById(R.id.settings_button);
         settingsButton.setOnClickListener(v -> {
             ActivityUtils.startActivity(this, new Intent(this, SettingsActivity.class));
+        });
+
+        // 侧栏直达入口：省去「设置 → AtomCode 模型」的两层点击。
+        MaterialButton atomCodeModelsButton = findViewById(R.id.atomcode_models_button);
+        atomCodeModelsButton.setOnClickListener(v -> {
+            ActivityUtils.startActivity(this, new Intent(this, AtomCodeModelsActivity.class));
         });
     }
 
