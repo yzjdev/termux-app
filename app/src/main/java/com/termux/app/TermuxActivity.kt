@@ -52,13 +52,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.updatePadding
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import com.termux.R
@@ -365,6 +369,29 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
 
         super.onCreate(savedInstanceState)
 
+        // Edge-to-edge (same as the Compose demo): draw content behind the transparent status
+        // bar instead of letting the system push everything down. The terminal gets its top
+        // inset back explicitly below; the drawer gradient is then free to reach y=0.
+        // The no-arg overload gives the navigation bar a translucent contrast scrim
+        // (DefaultLightScrim 0xE6FFFFFF / DefaultDarkScrim 0x801B1B1B in Activity 1.8.2) while the
+        // status bar gets a fully transparent one (auto(0,0)). That scrim is what leaves a bar
+        // at the bottom. Pass a transparent scrim for the navigation bar too so both system bars
+        // are symmetric and fully edge-to-edge; icon colours are handled by
+        // updateStatusBarAppearance() below.
+        enableEdgeToEdge(
+            navigationBarStyle = SystemBarStyle.auto(
+                lightScrim = Color.TRANSPARENT,
+                darkScrim = Color.TRANSPARENT,
+            )
+        )
+        // enableEdgeToEdge enables navigation-bar contrast enforcement on API 29+ because
+        // SystemBarStyle.auto() reports nightMode == 0. That makes the system draw its own
+        // translucent scrim over the transparent navigation bar, which shows up as a solid dark
+        // band over the drawer bottom on dark content. Disable it so the bar is truly transparent.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+
         setContentView(buildContentView())
 
         // Load termux shared preferences. This also fails if TermuxConstants.TERMUX_PACKAGE_NAME
@@ -388,6 +415,9 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
             mNavBarHeight = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
             mSystemBarInsetTop = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             mSystemBarInsetBottom = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            // Insets are handled edge-to-edge: the terminal content and the drawer each apply
+            // their own system-bar padding via ViewCompat/Compose WindowInsets, so no view-level
+            // translation is needed to reach behind the transparent status bar.
             // Insets may change while an overlay is already on screen; clamp it again once the
             // layout has settled.
             if (mQuickCommandsHost != null || mFloatingPanelHost != null) {
@@ -399,9 +429,10 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
             insets
         }
 
-        if (mProperties?.isUsingFullScreen == true) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        }
+        // Edge-to-edge requires the status bar to stay visible (transparent) so the drawer can
+        // draw behind it. FLAG_FULLSCREEN would hide/black out the bar entirely, defeating this,
+        // so it is intentionally not added here even when the fullscreen preference is on.
+        // The terminal content applies its own top inset, so nothing is covered.
 
         setTermuxTerminalViewAndClients()
         setTerminalToolbarView()
@@ -616,7 +647,11 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         val root = TermuxActivityRootView(this).apply {
             id = R.id.activity_termux_root_view
             orientation = LinearLayout.VERTICAL
-            fitsSystemWindows = true
+            // Edge-to-edge: do not let the root consume the top inset, otherwise the whole tree
+            // (including the drawer) is pushed below the transparent status bar. Only the bottom
+            // inset is applied (keyboard workaround relies on it); the terminal content and the
+            // drawer handle the top inset themselves via the official WindowInsets APIs.
+            fitsSystemWindows = false
         }
         mTermuxActivityRootView = root
         root.setActivity(this)
@@ -630,7 +665,11 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
-        val drawerLayout = DrawerLayout(this).apply { id = R.id.drawer_layout }
+        val drawerLayout = DrawerLayout(this).apply {
+            id = R.id.drawer_layout
+            // Let the lifted drawer child render into the status bar area above this layout.
+            clipChildren = false
+        }
         relativeLayout.addView(
             drawerLayout,
             RelativeLayout.LayoutParams(
@@ -641,6 +680,15 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         val contentLayout = LinearLayout(this).apply {
             id = R.id.terminal_content_layout
             orientation = LinearLayout.VERTICAL
+        }
+        // Full edge-to-edge: the root consumes no insets, so the terminal content applies its own
+        // top AND bottom padding to stay clear of the status/navigation bar icons. The drawer, in
+        // contrast, lets its background draw behind both bars. Use the official WindowInsets API,
+        // and pass the insets through so sibling views (the drawer) still receive them.
+        ViewCompat.setOnApplyWindowInsetsListener(contentLayout) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.updatePadding(top = bars.top, bottom = bars.bottom)
+            insets
         }
         drawerLayout.addView(
             contentLayout,
@@ -744,20 +792,22 @@ class TermuxActivity : AppCompatActivity(), ServiceConnection {
         ViewUtils.setLayoutMarginsInDp(relativeLayout, 0, marginVertical, 0, marginVertical)
     }
 
-    /** Make the status bar blend into the surface currently visible at the top of the screen:
-     * the terminal when the drawer is closed, or the drawer's top colour when it is open. */
+    /** With edge-to-edge the status bar is transparent and shows whatever is drawn behind it:
+     * the terminal when the drawer is closed, or the drawer's top colour when it is open. So the
+     * bars themselves are never tinted; only the icon colours follow the blended luminance so
+     * they stay readable over both a dark terminal and a light drawer. */
     @JvmOverloads
     fun updateStatusBarAppearance(drawerOffset: Float = 0f) {
-        if (mProperties?.isUsingFullScreen == true) return
         val drawerOffsetRatio = drawerOffset.coerceIn(0f, 1f)
         val terminalColor = (window.decorView.background as? ColorDrawable)?.color ?: Color.BLACK
         val drawerColor = ContextCompat.getColor(this, R.color.drawer_background_start)
         val color = ColorUtils.blendARGB(
             terminalColor, drawerColor, drawerOffsetRatio
         )
-        window.statusBarColor = color
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars =
-            ColorUtils.calculateLuminance(color) > 0.5f
+        val lightIcons = ColorUtils.calculateLuminance(color) > 0.5f
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.isAppearanceLightStatusBars = lightIcons
+        controller.isAppearanceLightNavigationBars = lightIcons
     }
 
     fun addTermuxActivityRootViewGlobalLayoutListener() {

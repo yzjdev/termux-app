@@ -13,15 +13,20 @@
         <item name="colorPrimaryVariant">@color/black</item>
 
         <item name="android:windowBackground">@color/black</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
-        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
+        <!-- System-bar colour/appearance overrides (statusBarColor, windowLightStatusBar,
+             enforceStatusBarContrast, windowTranslucentNavigation) removed to match the minimal
+             edge-to-edge theme from the reference Compose demo. enableEdgeToEdge() now owns all
+             system-bar colour and icon appearance; icon colours are driven at runtime by
+             updateStatusBarAppearance(). -->
 
         <!-- Avoid action mode toolbar pushing down terminal content when
              selecting text on pre-6.0 (non-floating toolbar). -->
         <item name="android:windowActionModeOverlay">true</item>
 
-        <item name="android:windowTranslucentNavigation">true</item>
+        <!-- windowTranslucentNavigation removed: it sets FLAG_TRANSLUCENT_NAVIGATION, which forces
+             a translucent black scrim over the nav bar and overrides navigationBarColor. That
+             made the bottom bar look solid black even with edge-to-edge. enableEdgeToEdge() now
+             owns system-bar transparency (with a transparent navigationBarStyle scrim). -->
 
         <!-- https://developer.android.com/training/tv/start/start.html#transition-color -->
         <item name="android:windowAllowReturnTransitionOverlap">true</item>

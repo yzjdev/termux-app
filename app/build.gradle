@@ -1,6 +1,6 @@
 plugins {
     id "com.android.application"
-    id "org.jetbrains.kotlin.android"
+    // AGP 9+ has built-in Kotlin support; 'org.jetbrains.kotlin.android' must be removed.
     id "org.jetbrains.kotlin.plugin.compose"
 }
 
@@ -53,11 +53,13 @@ android {
         implementation "io.github.rosemoe:editor:0.24.4"
 
         // Compose UI toolkit.
-        implementation platform("androidx.compose:compose-bom:2026.02.01")
+        implementation platform("androidx.compose:compose-bom:2026.09.00")
         implementation "androidx.compose.ui:ui"
         implementation "androidx.compose.ui:ui-tooling-preview"
         implementation "androidx.compose.foundation:foundation"
-        implementation "androidx.compose.material3:material3"
+        // Material 3 Expressive (MaterialExpressiveTheme / MotionScheme) is public only from 1.5.0;
+        // the 2026.09.00 BOM still resolves 1.4.0, so pin explicitly like the reference demo.
+        implementation "androidx.compose.material3:material3:1.5.0"
         implementation "androidx.compose.material:material-icons-core"
         implementation "androidx.activity:activity-compose:1.8.2"
         implementation "androidx.lifecycle:lifecycle-runtime-compose:2.8.7"
@@ -122,7 +124,8 @@ android {
         release {
             minifyEnabled true
             shrinkResources false // Reproducible builds
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // AGP 9+: proguard-android.txt is removed; use the optimize variant.
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
         }
 
@@ -156,25 +159,16 @@ android {
         }
     }
 
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            if (variant.buildType.name == "debug") {
-                def abi = output.getFilter("ABI")
-                outputFileName = new File("termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "debug") + "_" + (abi ? abi : "universal") + ".apk")
-            } else if (variant.buildType.name == "release") {
-                def abi = output.getFilter("ABI")
-                outputFileName = new File("termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + "release") + "_" + (abi ? abi : "universal") + ".apk")
-            }
-        }
-    }
-
     buildFeatures {
         buildConfig true
         compose true
     }
+}
 
-    kotlinOptions {
-        jvmTarget = "17"
+// AGP 9+ built-in Kotlin: jvmTarget moved from android.kotlinOptions to the top-level kotlin block.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
@@ -245,5 +239,23 @@ clean {
         def tree = fileTree(new File(projectDir, 'src/main/cpp'))
         tree.include 'bootstrap-*.zip'
         tree.each { it.delete() }
+    }
+}
+
+// AGP 9+ removed applicationVariants; use the androidComponents API to keep the exact same
+// per-ABI output file names the download page and updater script rely on.
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def apkVersionTag = System.getenv("TERMUX_APK_VERSION_TAG") ?: ""
+        def buildTypeName = variant.buildType
+        variant.outputs.forEach { output ->
+            def abi = output.filters.find { filter ->
+                filter.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI
+            }?.identifier
+            def tag = apkVersionTag ?: project.ext.packageVariant + "-" + buildTypeName
+            output.outputFileName.set(
+                "termux-app_" + tag + "_" + (abi ?: "universal") + ".apk"
+            )
+        }
     }
 }

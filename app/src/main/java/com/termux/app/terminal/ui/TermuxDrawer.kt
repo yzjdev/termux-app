@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -30,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -57,7 +57,10 @@ fun TermuxDrawer(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    // Demo-style drawer sheet: ModalDrawerSheet paints its own container colour across the whole
+    // sheet (behind both transparent system bars), so the navigation-bar strip can never show the
+    // black window background. Its content is inset from the system bars automatically.
+    ModalDrawerSheet(
         modifier = modifier
             .fillMaxSize()
             // Consume taps on blank areas so they do not pass through to the terminal view and
@@ -67,15 +70,8 @@ fun TermuxDrawer(
                 onClick = {},
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-            )
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        colorResource(R.color.drawer_background_start),
-                        colorResource(R.color.drawer_background_end),
-                    )
-                )
-            )
+            ),
+        drawerContainerColor = colorResource(R.color.drawer_background_start),
     ) {
         Box(
             modifier = Modifier

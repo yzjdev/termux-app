@@ -1,7 +1,8 @@
 package com.termux.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -46,7 +47,12 @@ private val DarkColors = darkColorScheme(
 )
 
 /**
- * Material3 theme used by every Compose screen in the app module.
+ * Material 3 Expressive theme used by every Compose screen in the app module.
+ *
+ * Upgraded from the plain MaterialTheme to MaterialExpressiveTheme with the expressive motion
+ * scheme (same as the reference Compose demo, material3 1.5.0). The brand colour scheme below is
+ * kept instead of demo's expressiveLightColorScheme() so Termux keeps its red identity; only the
+ * theme container and motion are expressive.
  *
  * The dark/light decision follows the system; the app's pre-Compose code drives
  * night mode through AppCompatDelegate, which in turn flips isSystemInDarkTheme().
@@ -56,8 +62,9 @@ fun TermuxTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
+    MaterialExpressiveTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }
