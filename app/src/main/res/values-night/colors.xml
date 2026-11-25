@@ -4,6 +4,8 @@
     <color name="drawer_list_item_background">#0DFFFFFF</color>
     <!-- Drawer list item pressed background. Dark theme: faint white. -->
     <color name="drawer_list_item_background_pressed">#1FFFFFFF</color>
+    <!-- 侧栏 connected 列表的行间分割线。深色主题：极淡白。 -->
+    <color name="drawer_list_divider">#1FFFFFFF</color>
     <!-- Drawer section title color. Dark theme: semi-transparent white. -->
     <color name="drawer_section_title">#99FFFFFF</color>
 

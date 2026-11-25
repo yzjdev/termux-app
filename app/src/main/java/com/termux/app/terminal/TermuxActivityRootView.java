@@ -50,8 +50,9 @@ import com.termux.shared.view.ViewUtils;
  * This overlap may happen even without `enforce-char-based-input=true` for keyboards with extended layouts
  * like number row, etc.
  *
- * To fix these issues, `activity_termux.xml` has the constant 1sp transparent
- * `activity_termux_bottom_space_view` View at the bottom. This will appear as a line matching the
+ * To fix these issues, {@link TermuxActivity} adds the constant 1dp transparent
+ * `activity_termux_bottom_space_view` View at the bottom of the root view it builds in code. This
+ * will appear as a line matching the
  * activity theme. When {@link TermuxActivity} {@link ViewTreeObserver.OnGlobalLayoutListener} is
  * called when any of the sub view layouts change,  like keyboard opening/closing keyboard,
  * extra keys/input view switched, etc, we check if the bottom space view is visible or not.

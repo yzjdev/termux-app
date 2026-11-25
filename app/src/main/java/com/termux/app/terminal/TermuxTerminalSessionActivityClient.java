@@ -15,7 +15,6 @@ import android.text.TextUtils;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.google.android.material.tabs.TabLayout;
 import com.termux.R;
 import com.termux.shared.interact.ShareUtils;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
@@ -440,10 +439,10 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
 
         final int indexOfSession = service.getIndexOfSession(session);
         if (indexOfSession < 0) return;
-        final TabLayout termuxSessionsTabLayout = mActivity.findViewById(R.id.terminal_sessions_tab_layout);
-        if (termuxSessionsTabLayout == null) return;
 
-        termuxSessionsTabLayout.selectTab(termuxSessionsTabLayout.getTabAt(indexOfSession));
+        // The session strip is a Compose list now: refreshing it rebuilds the tabs and scrolls
+        // the selected one into view, which replaces the TabLayout.selectTab() call.
+        mActivity.termuxSessionListNotifyUpdated();
     }
 
 
@@ -498,6 +497,7 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         TerminalSession session = mActivity.getCurrentSession();
         if (session != null && session.getEmulator() != null) {
             mActivity.getWindow().getDecorView().setBackgroundColor(session.getEmulator().mColors.mCurrentColors[TextStyle.COLOR_INDEX_BACKGROUND]);
+            mActivity.updateStatusBarAppearance();
         }
     }
 

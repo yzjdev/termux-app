@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Provider 协议下拉选项。atomcode 的 provider_accounts.provider 取值：
+         openai 走 OpenAI 兼容协议，其余为各家自有协议。 -->
+    <string-array name="atomcode_provider_protocols">
+        <item>openai</item>
+        <item>openai-compatible</item>
+        <item>claude-anthropic</item>
+        <item>deepseek</item>
+        <item>zhipu-glm</item>
+        <item>ollama-local</item>
+    </string-array>
+</resources>

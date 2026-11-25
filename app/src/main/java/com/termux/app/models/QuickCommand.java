@@ -12,6 +12,10 @@ public class QuickCommand {
     public String command;
     /** Resource id of the icon shown for this entry; reused from the built-in icon pool. */
     public int iconRes;
+    /** Drawable entry name of {@link #iconRes}, persisted so that the icon can be resolved again
+     * after the resource id changes, which happens whenever resources are added or removed in a
+     * new build since ids are assigned at compile time. */
+    public String iconName;
     /** Whether running this command shows the floating terminal panel; otherwise it runs as a background task. */
     public boolean useFloatingTerminal;
     /** Whether a toast popup shows the background task's exit result after it finishes. */
@@ -36,6 +40,7 @@ public class QuickCommand {
             json.put("name", name);
             json.put("command", command);
             json.put("iconRes", iconRes);
+            if (iconName != null) json.put("iconName", iconName);
             json.put("useFloatingTerminal", useFloatingTerminal);
             json.put("notifyResult", notifyResult);
         } catch (JSONException e) {
@@ -45,11 +50,13 @@ public class QuickCommand {
     }
 
     public static QuickCommand fromJson(JSONObject json) {
-        return new QuickCommand(
+        QuickCommand quickCommand = new QuickCommand(
             json.optString("name", ""),
             json.optString("command", ""),
             json.optInt("iconRes", 0),
             json.optBoolean("useFloatingTerminal", false),
             json.optBoolean("notifyResult", false));
+        quickCommand.iconName = json.optString("iconName", null);
+        return quickCommand;
     }
 }

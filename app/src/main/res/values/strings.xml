@@ -170,8 +170,6 @@
     <string name="atomcode_config_missing">未找到 config.toml，在终端运行一次 atomcode 后会自动生成</string>
     <string name="action_copy_install_command">复制命令</string>
     <string name="msg_atomcode_install_command_copied">安装命令已复制</string>
-    <string name="action_add_atomcode_model">添加模型</string>
-    <string name="title_add_atomcode_model">添加模型</string>
     <string name="title_edit_atomcode_model">编辑模型</string>
     <string name="atomcode_model_default_badge">默认</string>
     <string name="atomcode_model_id_label">模型 ID</string>
@@ -185,12 +183,12 @@
     <string name="atomcode_model_vision_label">支持视觉（图片输入）</string>
     <string name="atomcode_model_reasoning_label">推理强度</string>
     <string name="atomcode_model_reasoning_hint">可选，用逗号分隔，例如 low, high</string>
-    <string name="atomcode_new_account_label">新建 Provider 账号</string>
     <string name="atomcode_account_name_label">账号名称</string>
     <string name="atomcode_account_provider_label">协议</string>
-    <string name="atomcode_account_provider_hint">例如 openai、openai-compatible</string>
+    <string name="atomcode_account_provider_hint">选择协议</string>
     <string name="atomcode_account_base_url_label">Base URL</string>
     <string name="atomcode_account_base_url_hint">例如 https://api.example.com/v1</string>
+    <string name="msg_atomcode_account_base_url_required">请先填写 Base URL 才能拉取模型</string>
     <string name="atomcode_account_api_key_label">API Key</string>
     <string name="atomcode_account_api_key_hint">仅写入配置文件，界面不再显示</string>
     <string name="msg_atomcode_model_id_required">模型 ID 不能为空</string>

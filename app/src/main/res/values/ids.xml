@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- View ids of the terminal screen scaffold, which is built in code in TermuxActivity. -->
+<resources>
+    <item name="activity_termux_root_view" type="id" />
+    <item name="activity_termux_root_relative_layout" type="id" />
+    <item name="activity_termux_bottom_space_view" type="id" />
+    <item name="drawer_layout" type="id" />
+    <item name="terminal_content_layout" type="id" />
+    <item name="terminal_sessions_tab_strip" type="id" />
+    <item name="terminal_view" type="id" />
+    <item name="terminal_toolbar_container" type="id" />
+    <item name="terminal_toolbar_scroll" type="id" />
+    <item name="terminal_toolbar_extra_keys" type="id" />
+    <item name="left_drawer" type="id" />
+</resources>

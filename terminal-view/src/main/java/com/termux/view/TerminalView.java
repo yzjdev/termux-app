@@ -162,6 +162,9 @@ public final class TerminalView extends View {
                     return true;
                 }
                 requestFocus();
+                // Move the cursor in the shell input line to the tapped position, so that it can be
+                // repositioned by touching the screen instead of only with the arrow keys.
+                moveTerminalCursorToTap(event);
                 mClient.onSingleTapUp(event);
                 return true;
             }
@@ -551,6 +554,41 @@ public final class TerminalView extends View {
             row += mTopRow;
         }
         return new int[] { column, row };
+    }
+
+    /**
+     * Move the terminal cursor to the column of the event position by sending left/right arrow keys
+     * to the running process, so that the cursor can be repositioned in the input line of a shell
+     * by touching the screen, like in a text editor.
+     *
+     * Movement is only done if the event occurred on the same row as the cursor, since the number
+     * of up/down key presses required to reach another row of a possibly wrapped input line cannot
+     * be determined reliably. No movement is done either if an application is handling mouse events
+     * itself or has switched to the alternate buffer (like vim or less do), since the keys would be
+     * interpreted on its own terms.
+     *
+     * @param event The event with the position to move the cursor to.
+     * @return Whether arrow keys were sent to move the cursor.
+     */
+    public boolean moveTerminalCursorToTap(MotionEvent event) {
+        if (mEmulator == null || mTermSession == null) return false;
+        // Touch only: a mouse click reports its position itself when mouse tracking is active, and
+        // otherwise means the user is pointing at something, not repositioning the input cursor.
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE)) return false;
+        if (mEmulator.isMouseTrackingActive() || mEmulator.isAlternateBufferActive()) return false;
+
+        // The row is relative to the scroll position, so that it can be compared with the cursor row
+        // of the emulator, which is relative to the screen, even if the user has scrolled up.
+        int[] columnAndRow = getColumnAndRow(event, true);
+        if (columnAndRow[1] != mEmulator.getCursorRow()) return false;
+
+        int columnDelta = columnAndRow[0] - mEmulator.getCursorCol();
+        if (columnDelta == 0) return false;
+
+        int keyCode = columnDelta > 0 ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_LEFT;
+        int keyCount = Math.abs(columnDelta);
+        for (int i = 0; i < keyCount; i++) handleKeyCode(keyCode, 0);
+        return true;
     }
 
     /** Send a single mouse event code to the terminal. */
